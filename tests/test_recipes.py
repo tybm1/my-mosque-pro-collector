@@ -1,0 +1,202 @@
+"""Recipes and learning, tested on saved pages with a stand-in for Claude and the web.
+Run with:  python -m pytest -q"""
+import json
+from datetime import date
+from pathlib import Path
+
+import pytest
+
+from collector import fetch, learn, recipes
+from collector.recipes import (RecipeError, apply_fields, apply_mawaqit, apply_table_html, parse_date,
+                               pick_file_link, soup_of)
+from collector.validate import check_timetable
+
+FIX = Path(__file__).parent / "fixtures"
+TABLE = (FIX / "table_page.html").read_bytes()
+BOX = (FIX / "today_box.html").read_bytes()
+TODAY = date(2026, 10, 16)
+LONDON = {"id": 1, "name": "Test Masjid", "town": "London", "lat": 51.5185, "lng": -0.0659}
+
+TABLE_ANSWER = {"kind": "table", "table": "T0", "header_rows": 2, "date_col": 0, "date_style": "day_of_month",
+                "cols": {"fajr": {"col": 3}, "dhuhr": {"col": 6}, "asr": {"col": 8}, "maghrib": {"col": 9},
+                         "isha": {"col": 11}, "jumuah": None}}
+
+
+def table_recipe():
+    outline, refs = learn.html_outline(TABLE, "https://m.org/prayer")
+    spec = learn.table_recipe(TABLE_ANSWER, refs, lambda i: recipes.table_rows(soup_of(TABLE).find_all("table")[i]))
+    return {"kind": "table", "table": spec}
+
+
+def test_outline_shows_table_with_column_numbers():
+    outline, refs = learn.html_outline(TABLE, "https://m.org/prayer")
+    assert "[T0]" in outline and "3:6:15" in outline         # col 3 holds Fajr jamaat (colspan expanded)
+    assert any(r[0] == "link" and r[1].endswith(".pdf") for r in refs.values())
+
+
+def test_table_recipe_reads_jamaat_columns_not_start():
+    days = apply_table_html(table_recipe(), TABLE, TODAY)
+    assert days["2026-10-16"] == {"fajr": "6:15", "dhuhr": "1:30", "asr": "4:00", "maghrib": "6:05", "isha": "7:45"}
+    clean, problems, ok = check_timetable(days, LONDON["lat"], LONDON["lng"], TODAY)
+    assert ok and clean["2026-10-16"]["dhuhr"] == "13:30" and clean["2026-10-31"]["isha"] == "18:30"
+
+
+def test_table_recipe_follows_table_when_page_adds_another():
+    extra = TABLE.replace(b"<h2>", b"<table><tr><th>Event</th><th>Time</th></tr><tr><td>Talk</td><td>7:00</td></tr></table><h2>")
+    days = apply_table_html(table_recipe(), extra, TODAY)
+    assert days["2026-10-17"]["fajr"] == "6:15"
+
+
+def test_table_recipe_breaks_loudly_when_table_gone():
+    with pytest.raises(RecipeError):
+        apply_table_html(table_recipe(), b"<html><body><p>New website coming soon</p></body></html>", TODAY)
+
+
+def test_month_rollover_in_day_of_month_table():
+    rows = [["Date", "Fajr"], ["30", "5:00"], ["31", "5:01"], ["1", "5:02"]]
+    days = recipes.rows_to_days(rows, {"date_col": 0, "header_rows": 1, "cols": {"fajr": {"col": 1}}}, (2026, 10), TODAY)
+    assert list(days) == ["2026-10-30", "2026-10-31", "2026-11-01"]
+
+
+def fields_recipe():
+    outline, refs = learn.html_outline(BOX, "https://m.org/")
+    jam = {}
+    for ref, v in refs.items():
+        if v[0] == "el" and "j" in (v[1].get("class") or []):
+            jam[v[1].find_previous_sibling("span").find_previous_sibling("span").get_text().lower()] = ref
+    ans = {"kind": "fields", "fields": {p: {"el": jam[p]} for p in ("fajr", "dhuhr", "asr", "maghrib", "isha")}}
+    return {"kind": "fields", "fields": learn.fields_recipe(ans, refs)}
+
+
+def test_fields_recipe_reads_todays_box():
+    r = fields_recipe()
+    assert r["fields"]["fajr"]["label"].lower() == "fajr"
+    days = apply_fields(r, BOX, TODAY)
+    assert days == {"2026-10-16": {"fajr": "6:15", "dhuhr": "13:30", "asr": "16:00", "maghrib": "18:10", "isha": "19:45"}}
+
+
+def test_fields_recipe_detects_layout_change():
+    swapped = BOX.replace(b"<span>Fajr</span>", b"<span>Sunrise</span>")
+    with pytest.raises(RecipeError):
+        apply_fields(fields_recipe(), swapped, TODAY)
+
+
+def test_mawaqit_offsets_and_fixed_times():
+    cal = [{} for _ in range(12)]
+    iq = [{} for _ in range(12)]
+    for d in range(1, 32):
+        cal[9][str(d)] = ["05:40", "07:25", "12:44", "15:33", "18:05", "19:29"]
+        iq[9][str(d)] = ["06:15", "+30", "+20", "+5", "19:45"]
+    conf = {"calendar": cal, "iqamaCalendar": iq, "jumua": "13:15", "jumua2": "14:00", "iqamaEnabled": True}
+    page = f"<script>var confData = {json.dumps(conf)};\nvar x=1;</script>".encode()
+    days = apply_mawaqit(page, TODAY, days_ahead=3)
+    assert days["2026-10-16"] == {"fajr": "6:15", "dhuhr": "13:14", "asr": "15:53", "maghrib": "18:10",
+                                  "isha": "19:45", "jumuah": "13:15, 14:00"}
+    assert "jumuah" not in days["2026-10-17"]
+
+
+def test_mawaqit_slug_found_in_embed():
+    assert recipes.mawaqit_slug(b'<iframe src="https://mawaqit.net/en/w/masjid-al-noor-leicester?showOnly5PrayerTimes=0">') == "masjid-al-noor-leicester"
+
+
+def test_parse_dates():
+    assert parse_date("Fri 16 Oct", "full_date", None, TODAY) == date(2026, 10, 16)
+    assert parse_date("16/10/2026", "full_date", None, TODAY) == date(2026, 10, 16)
+    assert parse_date("January 3rd", "full_date", None, TODAY) == date(2027, 1, 3)
+    assert parse_date("Mon 2", "day_of_month", (2026, 11), TODAY) == date(2026, 11, 2)
+
+
+def test_pick_file_link_prefers_this_month():
+    html = b"""<a href="/up/Timetable-September-2026.pdf">September prayer timetable</a>
+               <a href="/up/Timetable-October-2026.pdf">October prayer timetable</a>
+               <a href="/up/annual-report.pdf">Annual report</a>"""
+    words = recipes.link_words("https://m.org/up/Timetable-August-2026.pdf", "August prayer timetable")
+    href, _ = pick_file_link(soup_of(html), "https://m.org/", words, TODAY)
+    assert href == "https://m.org/up/Timetable-October-2026.pdf"
+
+
+# ─────────── end to end: learning a site (web and Claude replaced by stand-ins) ───────────
+
+class FakeReader:
+    def __init__(self, answer, ai_days):
+        self.answer, self.ai_days, self.calls = answer, ai_days, 0
+
+    def ask(self, prompt, max_tokens=2000):
+        self.calls += 1
+        return self.answer
+
+    def read(self, mosque, today, **kw):
+        self.calls += 1
+        return {"has_jamaat": True, "days": self.ai_days}
+
+
+HOME = b'<html><body><h1>Test Masjid</h1><a href="/donate">Donate</a><a href="/prayer-times">Prayer Times</a>' + b"x" * 400 + b"</body></html>"
+
+
+def fake_web(monkeypatch):
+    pages = {"https://m.org/": HOME, "https://m.org/prayer-times": TABLE}
+
+    def get(url):
+        if url not in pages:
+            raise fetch.FetchError("HTTP 404")
+        return pages[url], "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+
+
+AI_SAYS = {"2026-10-16": {"fajr": "06:15", "dhuhr": "13:30", "asr": "16:00", "maghrib": "18:05", "isha": "19:45"},
+           "2026-10-17": {"fajr": "06:15", "dhuhr": "13:30", "asr": "16:00", "maghrib": "18:03", "isha": "19:45"}}
+
+
+def test_learn_finds_prayer_page_and_accepts_matching_recipe(monkeypatch):
+    fake_web(monkeypatch)
+    r = FakeReader(TABLE_ANSWER, AI_SAYS)
+    recipe, msg, days, url = learn.Learner(r, TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "table" and url == "https://m.org/prayer-times"
+    assert days["2026-10-16"]["isha"] == "19:45" and "100% agreement" in msg
+
+
+def test_learn_rejects_recipe_that_disagrees_with_ai(monkeypatch):
+    fake_web(monkeypatch)
+    wrong = json.loads(json.dumps(TABLE_ANSWER))
+    wrong["cols"]["fajr"] = {"col": 2}          # the Begins column
+    wrong["cols"]["isha"] = {"col": 10}
+    recipe, msg, days, url = learn.Learner(FakeReader(wrong, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "none" and days == {}
+
+
+# ─────────── the daily run following a recipe ───────────
+
+class FakeStore:
+    def __init__(self):
+        self.saved, self.updates = {}, {}
+
+    def save_days(self, mid, sid, url, days):
+        self.saved.update(days)
+        return len(days)
+
+    def update_source(self, sid, fields):
+        self.updates.update(fields)
+
+
+def test_daily_run_uses_recipe_without_ai(monkeypatch):
+    from collector import run
+    fake_web(monkeypatch)
+    store, reader = FakeStore(), FakeReader(None, {})
+    src = {"id": 9, "url": "https://m.org/prayer-times", "recipe": table_recipe(), "recipe_status": "ok",
+           "fail_count": 0, "mosques": LONDON}
+    stats = run.Stats()
+    line = run.process(src, TODAY, reader, store, run._Counter(stats))
+    assert "recipe" in line and reader.calls == 0
+    assert store.saved["2026-10-16"]["dhuhr"] == "13:30" and stats["by_recipe"] == 1
+
+
+def test_daily_run_falls_back_to_ai_when_site_changes(monkeypatch):
+    from collector import run
+    pages = {"https://m.org/prayer-times": b"<html><body><p>Fajr 05:39 jamaat 06:15, Dhuhr 12:44 / 13:30, Asr 15:33 / 16:00, Maghrib 18:05, Isha 19:29 / 19:45</p></body></html>"}
+    monkeypatch.setattr(fetch, "get", lambda url: (pages[url], "text/html", "h"))
+    store, reader = FakeStore(), FakeReader(None, AI_SAYS)
+    src = {"id": 9, "url": "https://m.org/prayer-times", "recipe": table_recipe(), "recipe_status": "ok",
+           "fail_count": 0, "last_hash": None, "mosques": LONDON}
+    line = run.process(src, TODAY, reader, store, run._Counter(run.Stats()))
+    assert reader.calls == 1 and store.updates["recipe_status"] == "broken"
+    assert store.saved["2026-10-16"]["isha"] == "19:45" and "no longer fits" in line

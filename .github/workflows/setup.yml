@@ -1,0 +1,40 @@
+name: Load mosques (run once)
+
+# GitHub → Actions → "Load mosques (run once)" → Run workflow.
+# Loads all mosques and their websites into Supabase. Safe to run again later
+# (after updating seed/mosques.json) — it updates rows instead of duplicating them.
+on:
+  workflow_dispatch:
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: python -m collector.load_seed
+
+  try-sites:
+    # Learns 3 well-known mosque websites without saving anything — a quick check
+    # that the Claude key works and recipes come out sensibly.
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: |
+          for u in https://www.eastlondonmosque.org.uk/prayer-times https://greenlanemasjid.org https://finsburyparkmosque.org; do
+            echo "=== $u"; python -m collector.learn --try "$u" || true
+          done
