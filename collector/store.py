@@ -9,9 +9,10 @@ class Store:
         if not config.SUPABASE_URL or not config.SUPABASE_SERVICE_KEY:
             raise SystemExit("SUPABASE_URL and SUPABASE_SERVICE_KEY must be set")
         self.base = config.SUPABASE_URL + "/rest/v1/"
-        self.h = {"apikey": config.SUPABASE_SERVICE_KEY,
-                  "Authorization": "Bearer " + config.SUPABASE_SERVICE_KEY,
-                  "Content-Type": "application/json"}
+        key = config.SUPABASE_SERVICE_KEY
+        self.h = {"apikey": key, "Content-Type": "application/json"}
+        if not key.startswith("sb_"):            # legacy service_role JWT; new sb_secret_ keys go in apikey only
+            self.h["Authorization"] = "Bearer " + key
 
     def _req(self, method, path, **kw):
         r = requests.request(method, self.base + path, headers={**self.h, **kw.pop("headers", {})}, timeout=60, **kw)
