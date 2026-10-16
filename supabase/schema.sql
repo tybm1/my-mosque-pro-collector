@@ -121,6 +121,8 @@ create or replace view jamaat_upcoming with (security_invoker = true) as
 grant select on jamaat_upcoming to anon;
 
 -- Housekeeping: drop rows older than 60 days (called by the collector).
-create or replace function prune_old_jamaat() returns void language sql as $$
+create or replace function prune_old_jamaat() returns void language sql
+  set search_path = public as $$
   delete from jamaat_times where day < (now() at time zone 'Europe/London')::date - 60;
 $$;
+revoke execute on function prune_old_jamaat() from public, anon, authenticated;   -- collector only
