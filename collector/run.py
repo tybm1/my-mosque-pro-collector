@@ -37,9 +37,13 @@ def expand_pattern(pattern: str, today: date) -> list[str]:
     return urls
 
 
-def read_url(url: str, mosque: dict, today: date, reader: Reader, seen: set):
+def read_url(url: str, mosque: dict, today: date, reader: Reader, seen: set, render: bool = False):
     """Returns (status, fingerprint, days, message, extra_urls)."""
-    body, ctype, raw_hash = fetch.get(url)
+    if render:
+        body = fetch.render(url)
+        ctype, raw_hash = "text/html", ""
+    else:
+        body, ctype, raw_hash = fetch.get(url)
     mt = media_type_for(url, ctype)
     if mt:                                   # PDF or image
         if raw_hash in seen:
@@ -67,7 +71,8 @@ def ai_read(src: dict, urls: list[str], today: date, reader: Reader, store: Stor
     fps = []
     for url in urls:
         try:
-            status, fp, days, note, links = read_url(url, m, today, reader, seen)
+            status, fp, days, note, links = read_url(url, m, today, reader, seen,
+                                                     render=bool((src.get("recipe") or {}).get("render")))
         except fetch.FetchError:
             if src.get("url_pattern"):
                 continue            # next month's file may not exist yet
@@ -127,7 +132,7 @@ def recipe_read(src: dict, today: date) -> tuple[dict, str]:
         href, label = file_for(r, today)
         data, _, _ = fetch.get(href)
         return apply_table_pdf(r, data, today, label + " " + href), href
-    body, _, _ = fetch.get(src["url"])
+    body = fetch.render(src["url"]) if r.get("render") else fetch.get(src["url"])[0]
     if kind == "table":
         return apply_table_html(r, body, today), src["url"]
     if kind == "fields":

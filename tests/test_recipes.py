@@ -141,6 +141,7 @@ def fake_web(monkeypatch):
             raise fetch.FetchError("HTTP 404")
         return pages[url], "text/html", "h"
     monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])   # no real browser in tests
 
 
 AI_SAYS = {"2026-10-16": {"fajr": "06:15", "dhuhr": "13:30", "asr": "16:00", "maghrib": "18:05", "isha": "19:45"},
@@ -200,3 +201,23 @@ def test_daily_run_falls_back_to_ai_when_site_changes(monkeypatch):
     line = run.process(src, TODAY, reader, store, run._Counter(run.Stats()))
     assert reader.calls == 1 and store.updates["recipe_status"] == "broken"
     assert store.saved["2026-10-16"]["isha"] == "19:45" and "no longer fits" in line
+
+
+def test_learn_opens_javascript_pages_in_a_browser(monkeypatch):
+    """Plain download has no times (filled in by JavaScript); the rendered page has the table."""
+    shell = b"<html><body><h1>Prayer Times</h1><div id='pt'>Loading</div><script>/*fills table*/</script></body></html>"
+    pages = {"https://m.org/": HOME, "https://m.org/prayer-times": shell}
+    monkeypatch.setattr(fetch, "get", lambda url: (pages[url], "text/html", "h"))
+    monkeypatch.setattr(fetch, "render", lambda url: TABLE if url.endswith("prayer-times") else HOME)
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "table" and recipe["render"] is True and "browser" in msg
+
+
+def test_daily_run_renders_when_recipe_says_so(monkeypatch):
+    from collector import run
+    monkeypatch.setattr(fetch, "get", lambda url: (b"<html><body>Loading</body></html>", "text/html", "h"))
+    monkeypatch.setattr(fetch, "render", lambda url: TABLE)
+    src = {"id": 9, "url": "https://m.org/prayer-times", "recipe": {**table_recipe(), "render": True},
+           "recipe_status": "ok", "fail_count": 0, "mosques": LONDON}
+    days, used = run.recipe_read(src, TODAY)
+    assert days["2026-10-16"]["fajr"] == "6:15"

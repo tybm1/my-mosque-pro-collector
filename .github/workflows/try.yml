@@ -1,0 +1,31 @@
+name: Try websites (test only)
+
+# Learns a few mosque websites and prints what it found — nothing is saved.
+# GitHub → Actions → "Try websites (test only)" → Run workflow (change the list if you like).
+on:
+  workflow_dispatch:
+    inputs:
+      urls:
+        description: "Mosque websites to try, separated by spaces"
+        default: "https://www.eastlondonmosque.org.uk https://didsburymosque.com https://manchestercentralmosque.org https://www.centralmosque.org.uk https://leedsgrandmosque.com https://masjid-umar.org https://croydonmosque.com https://derbyjamiamosque.org.uk"
+
+jobs:
+  try:
+    runs-on: ubuntu-latest
+    env:
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - name: Install headless browser (for sites that show times with JavaScript)
+        run: python -m playwright install --with-deps chromium
+      - name: Results
+        run: |
+          for u in ${{ inputs.urls }}; do
+            echo "=== $u"
+            python -m collector.learn --try "$u" 2>&1 | grep -v '"sel"' || true
+          done

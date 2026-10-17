@@ -31,6 +31,7 @@ from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, appl
 from .validate import check_timetable, to_minutes
 
 MAX_PAGES_PER_SITE = 6
+MAX_RENDERS_PER_SITE = 3        # pages opened in a real browser when plain download shows no times
 PAGE_WORDS = re.compile(r"prayer|salah|salat|namaz|jama'?a?h?t|iqam|timetable|time-table|times", re.I)
 NOT_PAGES = re.compile(r"donat|zakat|login|account|cart|shop|wp-admin|facebook|twitter|instagram|whatsapp|mailto:|tel:|#", re.I)
 
@@ -287,7 +288,7 @@ class Learner:
         """Returns (recipe, message, clean_days, timetable_url)."""
         site = urlparse(start).netloc.lower().removeprefix("www.")
         queue, seen, notes = [start], set(), []
-        pages = 0
+        pages = renders = 0
         while queue and pages < MAX_PAGES_PER_SITE:
             url = queue.pop(0)
             if url in seen:
@@ -315,6 +316,22 @@ class Learner:
             recipe, msg, days, more = self.try_page(m, url, body)
             if recipe:
                 return recipe, msg, days, recipe.get("url") or url
+            if msg == "no times on page" and renders < MAX_RENDERS_PER_SITE and (url == start or PAGE_WORDS.search(url)):
+                # Many mosque sites fill in the times with JavaScript: open the page in a browser and look again.
+                renders += 1
+                try:
+                    rbody = fetch.render(url)
+                except (fetch.Blocked, fetch.FetchError) as e:
+                    notes.append(f"{urlparse(url).path or '/'}: browser — {e}")
+                else:
+                    recipe, msg, days, more2 = self.try_page(m, url, rbody)
+                    if recipe:
+                        if recipe["kind"] in ("table", "fields", "page_ai"):
+                            recipe["render"] = True
+                        return recipe, msg + " (page opened in a browser)", days, recipe.get("url") or url
+                    more = list(dict.fromkeys(more + more2))
+                    body = rbody                # look for timetable links on the rendered page too
+                    msg = f"{msg} (also checked in a browser)"
             notes.append(f"{urlparse(url).path or '/'}: {msg}")
             # timetable files linked from this page
             for href in more:
@@ -332,8 +349,6 @@ class Learner:
                 for link in candidate_pages(body, url, site):
                     if link not in seen and link not in queue:
                         queue.append(link)
-            if len(page_text(body, url)[0]) < 300 and url == start:
-                notes.append("very little text — the site may need a browser (JavaScript) to show times")
         return {"kind": "none"}, "; ".join(notes[-4:])[:300] or "no timetable found", {}, start
 
 
@@ -383,7 +398,12 @@ def main():
         lat, lng = 52.48, -1.89          # checks use central England unless the mosque is in the database
         m = {"id": 0, "name": urlparse(args.try_url).netloc, "town": "UK", "lat": lat, "lng": lng}
         reader = Reader(max_calls=12)
-        recipe, msg, days, url = Learner(reader, today).learn(m, args.try_url)
+        try:
+            recipe, msg, days, url = Learner(reader, today).learn(m, args.try_url)
+        except fetch.Blocked as e:
+            print(json.dumps({"timetable_url": args.try_url, "recipe": None,
+                              "message": f"website refuses automated visits — {e}", "ai_calls": reader.calls}, indent=2))
+            return
         print(json.dumps({"timetable_url": url, "recipe": recipe, "message": msg, "ai_calls": reader.calls,
                           "first_days": dict(list(days.items())[:3])}, indent=2))
         return

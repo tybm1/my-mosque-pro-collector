@@ -84,3 +84,52 @@ def get(url: str) -> tuple[bytes, str, str]:
     body = b"".join(chunks)
     ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
     return body, ctype, hashlib.sha256(body).hexdigest()
+
+
+# ───────────── pages that only show times after JavaScript runs ─────────────
+_tls = threading.local()      # one browser per worker thread (Playwright objects aren't shared across threads)
+
+
+def _browser():
+    b = getattr(_tls, "browser", None)
+    if b is None:
+        from playwright.sync_api import sync_playwright
+        _tls.pw = sync_playwright().start()
+        b = _tls.browser = _tls.pw.chromium.launch()
+    return b
+
+
+def render(url: str) -> bytes:
+    """The page's HTML after a headless browser has run its JavaScript.
+    Same rules as get(): robots.txt, one visit every few seconds per site, refusals respected."""
+    if not allowed(url):
+        raise Blocked("robots.txt disallows automated access")
+    _wait_turn(url)
+    try:
+        browser = _browser()
+    except Exception as e:                      # Playwright/Chromium not installed
+        raise FetchError(f"browser not available ({str(e)[:80]})")
+    ctx = browser.new_context(user_agent=config.USER_AGENT, locale="en-GB", timezone_id="Europe/London")
+    page = ctx.new_page()
+    # no images, video or fonts: faster and lighter on the mosque's server
+    page.route("**/*", lambda r: r.abort() if r.request.resource_type in ("image", "media", "font")
+               else r.continue_())
+    try:
+        resp = page.goto(url, wait_until="domcontentloaded", timeout=30000)
+        if resp is not None and resp.status in (401, 403, 451):
+            raise Blocked(f"site refused access (HTTP {resp.status})")
+        if resp is not None and resp.status >= 400:
+            raise FetchError(f"HTTP {resp.status}")
+        try:
+            page.wait_for_load_state("networkidle", timeout=12000)
+        except Exception:
+            pass                                # some pages never go quiet (live clocks); use what has loaded
+        page.wait_for_timeout(1500)
+        html = page.content()
+    except (Blocked, FetchError):
+        raise
+    except Exception as e:
+        raise FetchError(f"browser could not load the page ({str(e)[:100]})")
+    finally:
+        ctx.close()
+    return html.encode("utf-8")
