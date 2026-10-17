@@ -17,7 +17,8 @@ from . import config
 TIMETABLE_WORDS = re.compile(r"timetable|time-table|prayer|salah|salat|namaz|jama'?a?h?t|iqam|calendar", re.I)
 FILE_LINK = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 
-PROMPT = """You are reading the published prayer timetable of a UK mosque ({name}, {town}).
+PROMPT = """You are reading the published prayer timetable of a UK mosque: {name}, {where}.
+If the page lists several mosques (e.g. a town's mosques side by side, often named by street), use ONLY this mosque's times — match it by name OR by its street/address.
 Today is {today}. Extract the JAMAAT times (also called iqamah, congregation, jama'ah) —
 NOT the start / begins / adhan times. Many timetables show both; use only the jamaat column.
 If the page shows only start times and no jamaat times, return has_jamaat false.
@@ -36,6 +37,12 @@ Rules:
 - "jumuah" only on Fridays, as printed (khutbah or jamaat times), else null.
 - If no year is printed, assume the dates are in the current or next month around {today}.
 """
+
+
+def where(m: dict) -> str:
+    """'34 Jubilee Road, High Wycombe HP11 2PG' — helps match a mosque on pages listing several."""
+    parts = [m.get("address"), m.get("town")]
+    return ", ".join(x for x in parts if x) + (" " + m["postcode"] if m.get("postcode") else "")
 
 
 def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
@@ -93,7 +100,7 @@ class Reader:
     def read(self, mosque: dict, today: date, *, text: str | None = None,
              data: bytes | None = None, media_type: str | None = None) -> dict:
         self._count()
-        prompt = PROMPT.format(name=mosque["name"], town=mosque["town"], today=today.isoformat())
+        prompt = PROMPT.format(name=mosque["name"], where=where(mosque), today=today.isoformat())
         content = []
         if data is not None:
             b64 = base64.standard_b64encode(data).decode()

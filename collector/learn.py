@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 from . import config, fetch
-from .extract import TIMETABLE_WORDS, Reader, has_times, media_type_for, page_text
+from .extract import TIMETABLE_WORDS, Reader, has_times, media_type_for, page_text, where
 from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, apply_mawaqit, apply_table_html,
                       apply_table_pdf, context_of, css_path, link_words, mawaqit_slug, pdf_tables, signature,
                       soup_of, table_rows, times_in)
@@ -35,7 +35,8 @@ MAX_RENDERS_PER_SITE = 3        # pages opened in a real browser when plain down
 PAGE_WORDS = re.compile(r"prayer|salah|salat|namaz|jama'?a?h?t|iqam|timetable|time-table|times", re.I)
 NOT_PAGES = re.compile(r"donat|zakat|login|account|cart|shop|wp-admin|facebook|twitter|instagram|whatsapp|mailto:|tel:|#", re.I)
 
-RECIPE_PROMPT = """You are helping a mosque app read the published prayer times of {name} ({town}) automatically.
+RECIPE_PROMPT = """You are helping a mosque app read the published prayer times of {name} ({where}) automatically.
+If the page shows several mosques (often named by street), map ONLY this mosque — match it by name OR by its street/address.
 Below is an outline of one page of the mosque's website{what}. Today is {today}.
 
 We need the JAMAAT times (also called iqamah / congregation / jama'ah) — NOT the start / begins / adhan times.
@@ -174,7 +175,7 @@ class Learner:
         self.reader, self.today = reader, today
 
     def ask_recipe(self, m: dict, outline: str, what: str = "") -> dict:
-        return self.reader.ask(RECIPE_PROMPT.format(name=m["name"], town=m["town"], today=self.today,
+        return self.reader.ask(RECIPE_PROMPT.format(name=m["name"], where=where(m), today=self.today,
                                                     what=what, outline=outline))
 
     def verify(self, m: dict, days: dict, *, text=None, data=None, media_type=None) -> tuple[bool, str, dict]:
@@ -378,7 +379,7 @@ def candidate_pages(body: bytes, base: str, site: str) -> list[str]:
 
 def due(store, limit: int) -> list[dict]:
     month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = store._req("GET", "sources?select=*,mosques(id,name,town,lat,lng,website)"
+    rows = store._req("GET", "sources?select=*,mosques(id,name,address,town,postcode,lat,lng,website)"
                              "&enabled=is.true&blocked_reason=is.null"
                              f"&or=(recipe_status.is.null,recipe_status.eq.broken,and(recipe_status.eq.none,recipe_learned_at.lt.{month_ago}))"
                              "&order=recipe_status.asc.nullsfirst,id", headers={"Range": f"0-{limit - 1}"})
@@ -426,6 +427,11 @@ def main():
                 return "stopped", f"{m['name']}: not learned (AI limit for this run reached)"
             store.update_source(src["id"], {"recipe_status": "none", "recipe_learned_at": now, "last_message": str(e)[:300]})
             return "error", f"{m['name']}: error — {str(e)[:120]}"
+        breaks = int((src.get("recipe") or {}).get("breaks") or 0)
+        if breaks >= 2 and recipe["kind"] in ("table", "fields"):
+            # this site's layout keeps shifting: let AI read it whenever it changes instead
+            recipe = {"kind": "page_ai", "render": bool(recipe.get("render")), "breaks": breaks}
+            msg += " — layout changes often, so AI reads it when it changes"
         status = "none" if recipe["kind"] == "none" else "ok"
         fields = {"recipe": recipe, "recipe_status": status, "recipe_learned_at": now, "last_message": msg[:300],
                   "last_hash": None}

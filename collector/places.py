@@ -72,7 +72,7 @@ def main():
     store = Store()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=60)).strftime("%Y-%m-%dT%H:%M:%SZ")
     have = {r["mosque_id"] for r in store._req("GET", "sources?select=mosque_id&enabled=is.true", headers={"Range": "0-19999"})}
-    mosques = store._req("GET", "mosques?select=id,name,town,postcode,lat,lng,place_id,places_checked_at"
+    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,lat,lng,place_id,places_checked_at"
                                 f"&active=is.true&website=is.null&or=(places_checked_at.is.null,places_checked_at.lt.{cutoff})"
                                 "&order=places_checked_at.asc.nullsfirst,id", headers={"Range": "0-9999"})
     today = datetime.now(ZoneInfo(config.TIMEZONE)).date()

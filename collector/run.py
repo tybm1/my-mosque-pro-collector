@@ -166,6 +166,7 @@ def process(src: dict, today: date, reader: Reader, store: Store, stats: dict) -
                     url = file_for(recipe, today)[0]
                 fields, note = ai_read(src, [url], today, reader, store, stats)
                 fields["recipe_status"] = "broken"
+                fields["recipe"] = {**recipe, "breaks": int(recipe.get("breaks") or 0) + 1}
                 note = f"recipe no longer fits ({e}); {note}"
         elif kind == "page_ai":
             fields, note = ai_read(src, [src["url"]], today, reader, store, stats)
