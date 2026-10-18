@@ -29,7 +29,10 @@ PROFILE_WORDS = re.compile(r"jum[u']?'?[a]?h?|jumm?ah|jumu|friday|khutb|sister|w
                            r"ablution|parking|wheelchair|disab|access|about|visit|contact", re.I)
 NOT_PAGES = re.compile(r"donat|zakat|login|account|cart|shop|wp-admin|facebook|twitter|instagram|whatsapp|mailto:|tel:|"
                        r"\.(pdf|png|jpe?g|webp|zip|mp[34])(\?|$)", re.I)
-MAX_PAGES = 5
+MAX_PAGES = 6
+JUM = re.compile(r"jum[u']?'?a?h|jumm?a|jumu|friday|khutb", re.I)
+HAS_TIME = re.compile(r"\b\d{1,2}[:.]\d{2}\b")
+MEDIA = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 
 PROMPT = """These are extracts from the website of a UK mosque: {name}, {where}.
 If the site covers several mosques or centres, answer ONLY for this one (match by name or street).
@@ -88,15 +91,16 @@ def relevant(text: str, limit: int = 6000) -> str:
     keep = set()
     for i, l in enumerate(lines):
         if PROFILE_WORDS.search(l):
-            keep.update(range(max(0, i - 2), min(len(lines), i + 4)))
+            keep.update(range(max(0, i - 3), min(len(lines), i + 8)))
     out = "\n".join(lines[i] for i in sorted(keep))
     return out[:limit]
 
 
-def site_pages(m: dict, start: str) -> tuple[list[tuple[str, str]], str]:
-    """[(url, relevant text)] for the home page and the most relevant linked pages."""
+def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first: bool = False):
+    """([(url, relevant text)], combined text, [Jumu'ah poster/PDF urls]) for the home page, the
+    mosque's timetable page and the most relevant linked pages."""
     site = urlparse(start).netloc.lower().removeprefix("www.")
-    got, queue, seen = [], [start], set()
+    got, queue, seen, media = [], [start] + [u for u in (extra or []) if u and u != start], set(), []
     while queue and len(got) < MAX_PAGES:
         url = queue.pop(0)
         if url in seen:
@@ -113,16 +117,26 @@ def site_pages(m: dict, start: str) -> tuple[list[tuple[str, str]], str]:
         if "html" not in ctype:
             continue
         text, _ = page_text(body, url)
-        if len(text) < 400:                       # page built by JavaScript
+        jum_lines = [l for l in text.split("\n") if JUM.search(l)]
+        needs_browser = len(text) < 400 or render_first or (jum_lines and not HAS_TIME.search(relevant(text)))
+        if needs_browser:                         # page fills in its content with JavaScript
             try:
                 body = fetch.render(url)
                 text, _ = page_text(body, url)
             except (fetch.Blocked, fetch.FetchError):
                 pass
+        # Jumu'ah times posted as a poster image or PDF
+        for tag in soup_of(body).find_all(["img", "a"]):
+            src = tag.get("src") or tag.get("href") or ""
+            label = " ".join(filter(None, [tag.get("alt"), tag.get("title"), tag.get_text(" ", strip=True) if tag.name == "a" else "", src]))
+            if src and JUM.search(label) and (tag.name == "img" or MEDIA.search(src)):
+                u = urljoin(url, src)
+                if u not in media and not u.startswith("data:"):
+                    media.append(u)
         rel = relevant(text)
         if rel:
             got.append((url, rel))
-        if url == start:
+        if url == start or len(seen) <= 2:
             scored = []
             for a in soup_of(body).find_all("a", href=True):
                 href = urljoin(url, a["href"]).split("#")[0]
@@ -131,21 +145,54 @@ def site_pages(m: dict, start: str) -> tuple[list[tuple[str, str]], str]:
                 hay = a.get_text(" ", strip=True) + " " + urlparse(href).path
                 score = (3 if re.search(r"jum|friday|khutb", hay, re.I) else 0) + \
                         (2 if re.search(r"sister|women|ladies|facilit", hay, re.I) else 0) + \
-                        (1 if re.search(r"about|visit|contact|prayer", hay, re.I) else 0)
+                        (1 if re.search(r"about|visit|contact|prayer|service|amenit|our-mosque|centre", hay, re.I) else 0)
                 if score:
                     scored.append((score, href))
             for _, h in sorted(scored, key=lambda x: -x[0]):
                 if h not in queue and h not in seen:
                     queue.append(h)
     combined = "\n\n".join(f"[page {urlparse(u).path or '/'}]\n{t}" for u, t in got)[:20000]
-    return got, combined
+    return got, combined, media[:3]
 
 
-def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, today) -> dict:
+POSTER_PROMPT = """This image/PDF is from the website of a UK mosque ({name}). If it shows Friday (Jumu'ah) prayer times,
+return ONLY JSON {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": null}}; if the times change
+with the clocks, give the ones that apply on {today}. If it shows no Jumu'ah times return {{"slots": []}}."""
+
+
+def read_poster(m: dict, url: str, reader: Reader, today):
+    from .extract import media_type_for
+    try:
+        data, ctype, _ = fetch.get(url)
+    except (fetch.Blocked, fetch.FetchError):
+        return None
+    mt = media_type_for(url, ctype)
+    if not mt or len(data) > 5_000_000:
+        return None
+    import base64
+    block = {"type": "document" if mt == "application/pdf" else "image",
+             "source": {"type": "base64", "media_type": mt, "data": base64.standard_b64encode(data).decode()}}
+    reader._count()
+    msg = reader.client.messages.create(model=config.CLAUDE_MODEL, max_tokens=500, messages=[{"role": "user", "content": [
+        block, {"type": "text", "text": POSTER_PROMPT.format(name=m["name"], today=today)}]}])
+    from .extract import parse_reply
+    return clean_jumuah(parse_reply("".join(b.text for b in msg.content if getattr(b, "type", "") == "text")))
+
+
+def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, today,
+                 timetable_url: str | None = None, render_timetable: bool = False) -> dict:
     """Returns fields to save on the mosque (may be just profile_checked_at when nothing changed)."""
     now = datetime.now(timezone.utc).isoformat()
-    pages, text = site_pages(m, start)
-    h = hashlib.sha256(re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text).encode()).hexdigest()
+    pages, text, media = site_pages(m, start, [timetable_url] if timetable_url else None)
+    if render_timetable and timetable_url and not any(u == timetable_url for u, _ in pages):
+        try:
+            t2 = relevant(page_text(fetch.render(timetable_url), timetable_url)[0])
+            if t2:
+                pages.append((timetable_url, t2))
+                text = (text + f"\n\n[page {urlparse(timetable_url).path or '/'}]\n{t2}")[:20000]
+        except (fetch.Blocked, fetch.FetchError):
+            pass
+    h = hashlib.sha256((re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text) + "|".join(media)).encode()).hexdigest()
     if not text.strip():
         return {"profile_checked_at": now, "profile_hash": h}
     if h == last_hash:
@@ -154,9 +201,16 @@ def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, tod
     src = urlparse(start).netloc.lower().removeprefix("www.")
     fields = {"profile_checked_at": now, "profile_at": now, "profile_hash": h, "profile_src": src}
     j = clean_jumuah(ans.get("jumuah"))
+    poster = None
+    if not j:
+        for u in media:                           # Jumu'ah times posted as an image or PDF
+            j = read_poster(m, u, reader, today)
+            if j:
+                poster = u
+                break
     jum_url = next((u for u, t in pages if re.search(r"jum|friday|khutb", urlparse(u).path, re.I)), None) or \
         next((u for u, t in pages if re.search(r"khutb|jamaa?t", t, re.I) and re.search(r"jum|friday", t, re.I)), start)
-    fields["jumuah"] = {**j, "src": src, "url": jum_url, "at": now[:10]} if j else None
+    fields["jumuah"] = {**j, "src": src, "url": poster or jum_url, "at": now[:10]} if j else None
     fac = [str(x)[:40] for x in (ans.get("facilities") or []) if isinstance(x, str)][:8]
     fields["facilities"] = fac or None
     sis = ans.get("sisters")
@@ -185,7 +239,7 @@ def main():
     from .store import Store
     store = Store()
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash"
+    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,sources(url,recipe)"
                                 f"&active=is.true&website=not.is.null"
                                 f"&or=(profile_checked_at.is.null,profile_checked_at.lt.{week_ago})"
                                 "&order=profile_priority.desc,profile_checked_at.asc.nullsfirst,id",
@@ -195,7 +249,10 @@ def main():
 
     def one(m):
         try:
-            f = read_profile(m, m["website"], reader, m.get("profile_hash"), today)
+            src = next((s for s in (m.get("sources") or []) if s.get("url")), None)
+            f = read_profile(m, m["website"], reader, m.get("profile_hash"), today,
+                             timetable_url=src["url"] if src else None,
+                             render_timetable=bool(src and (src.get("recipe") or {}).get("render")))
         except fetch.Blocked as e:
             store._req("PATCH", f"mosques?id=eq.{m['id']}", json={"profile_checked_at": datetime.now(timezone.utc).isoformat()},
                        headers={"Prefer": "return=minimal"})
