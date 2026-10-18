@@ -11,7 +11,7 @@ CLAUDE_MODEL = os.environ.get("CLAUDE_MODEL", "claude-haiku-5-5")
 
 USER_AGENT = os.environ.get(
     "COLLECTOR_USER_AGENT",
-    "MyMosqueProBot/1.0 (+https://mymosquepro.com/bot; jamaat timetable collector)",
+    "MyMosqueProBot/1.0 (+https://tybm1.github.io/my-mosque-pro/bot.html; info@mymosquepro.com)",
 )
 REQUEST_TIMEOUT = 30          # seconds per request
 PER_HOST_DELAY = 3.0          # seconds between requests to the same website
