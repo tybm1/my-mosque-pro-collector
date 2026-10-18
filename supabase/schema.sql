@@ -126,3 +126,30 @@ create or replace function prune_old_jamaat() returns void language sql
   delete from jamaat_times where day < (now() at time zone 'Europe/London')::date - 60;
 $$;
 revoke execute on function prune_old_jamaat() from public, anon, authenticated;   -- collector only
+
+-- ─────────────────────────────────────────────────────────────
+-- Mosque profiles read from their websites (collector.profile)
+-- ─────────────────────────────────────────────────────────────
+alter table mosques add column if not exists jumuah             jsonb;   -- {slots:[{name,khutbah,jamaat}], note, src, url, at}
+alter table mosques add column if not exists facilities         jsonb;   -- ["Wudu area","Parking",...]
+alter table mosques add column if not exists sisters_web        text check (sisters_web in ('yes','no'));
+alter table mosques add column if not exists sisters_web_note   text;
+alter table mosques add column if not exists profile_src        text;
+alter table mosques add column if not exists profile_hash       text;
+alter table mosques add column if not exists profile_at         timestamptz;
+alter table mosques add column if not exists profile_checked_at timestamptz;
+alter table mosques add column if not exists profile_priority   integer not null default 0;
+alter table sources add column if not exists priority integer not null default 0;   -- learned first when higher
+
+-- Updates sent from the app (checked by the app owner)
+create table if not exists submissions (
+  id bigint generated always as identity primary key,
+  mosque_id integer not null references mosques(id) on delete cascade,
+  kind text not null check (kind in ('change','claim')),
+  prayer text check (prayer in ('Fajr','Dhuhr','Asr','Maghrib','Isha','Jumuah')),
+  time text check (time ~ '^[0-2][0-9]:[0-5][0-9]$'),
+  from_date date, role text, name text, contact text,
+  status text not null default 'pending' check (status in ('pending','approved','rejected')),
+  created_at timestamptz not null default now()
+);
+alter table submissions enable row level security;

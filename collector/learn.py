@@ -382,7 +382,7 @@ def due(store, limit: int) -> list[dict]:
     rows = store._req("GET", "sources?select=*,mosques(id,name,address,town,postcode,lat,lng,website)"
                              "&enabled=is.true&blocked_reason=is.null"
                              f"&or=(recipe_status.is.null,recipe_status.eq.broken,and(recipe_status.eq.none,recipe_learned_at.lt.{month_ago}))"
-                             "&order=recipe_status.asc.nullsfirst,id", headers={"Range": f"0-{limit - 1}"})
+                             "&order=priority.desc,recipe_status.asc.nullsfirst,id", headers={"Range": f"0-{limit - 1}"})
     return rows
 
 

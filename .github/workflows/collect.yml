@@ -9,6 +9,9 @@ on:
       learn_limit:
         description: "Websites to learn recipes for in this run"
         default: "150"
+      profile_limit:
+        description: "Mosque websites to read for Jumu'ah / sisters / facilities in this run"
+        default: "200"
       discover:
         description: "Also look up mosques without a website (Google Places)"
         type: boolean
@@ -47,6 +50,11 @@ jobs:
       - name: Learn recipes for new or changed websites
         if: github.event.schedule != '30 4 * * 1'
         run: python -m collector.learn --limit ${{ inputs.learn_limit || '150' }}
+        continue-on-error: true
+
+      - name: Read mosque websites for Jumu'ah times, sisters' area and facilities (weekly per mosque)
+        if: github.event.schedule != '30 4 * * 1'
+        run: python -m collector.profile --limit ${{ inputs.profile_limit || '200' }}
         continue-on-error: true
 
       - name: Collect today's jamaat times

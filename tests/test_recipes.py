@@ -221,3 +221,22 @@ def test_daily_run_renders_when_recipe_says_so(monkeypatch):
            "recipe_status": "ok", "fail_count": 0, "mosques": LONDON}
     days, used = run.recipe_read(src, TODAY)
     assert days["2026-10-16"]["fajr"] == "6:15"
+
+
+# ─────────── mosque profiles (Jumu'ah, sisters, facilities) ───────────
+
+def test_jumuah_times_cleaned_and_checked():
+    from collector.profile import clean_jumuah
+    j = clean_jumuah({"slots": [{"name": "1st", "khutbah": "1:15", "jamaat": "1:30"},
+                                {"name": "2nd", "khutbah": None, "jamaat": "14:30"},
+                                {"name": "bad", "jamaat": "19:45"}], "note": "Arabic & English"})
+    assert j["slots"] == [{"name": "1st", "khutbah": "13:15", "jamaat": "13:30"},
+                          {"name": "2nd", "khutbah": None, "jamaat": "14:30"}]
+    assert clean_jumuah({"slots": [{"jamaat": "20:00"}]}) is None and clean_jumuah(None) is None
+
+
+def test_relevant_keeps_only_profile_lines():
+    from collector.profile import relevant
+    text = "Welcome\nOur history\nDonate now\nJumu'ah prayers\n1st khutbah 1:15pm\nSisters' prayer hall upstairs\nCopyright"
+    out = relevant(text)
+    assert "1st khutbah 1:15pm" in out and "Sisters' prayer hall upstairs" in out
