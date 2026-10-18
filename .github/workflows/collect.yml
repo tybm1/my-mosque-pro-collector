@@ -53,9 +53,14 @@ jobs:
         run: python -m collector.learn --limit ${{ inputs.learn_limit || (github.event.schedule == '15 10,16,22 * * *' && '300') || '150' }}
         continue-on-error: true
 
-      - name: Read mosque websites for Jumu'ah times, sisters' area and facilities (weekly per mosque)
+      - name: Read new mosque websites once for Jumu'ah times, sisters' area and facilities
         if: github.event.schedule != '30 4 * * 1'
         run: python -m collector.profile --limit ${{ inputs.profile_limit || '200' }}
+        continue-on-error: true
+
+      - name: Re-check Jumu'ah times (each mosque weekly; AI only when the page changed)
+        if: github.event.schedule == '15 3 * * *'
+        run: python -m collector.profile --jumuah --limit 400
         continue-on-error: true
 
       - name: Collect today's jamaat times

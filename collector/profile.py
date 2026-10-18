@@ -1,6 +1,7 @@
 """Read each mosque website's profile: Jumu'ah times, sisters' facilities, other facilities.
 
-    python -m collector.profile --limit 200
+    python -m collector.profile --limit 200      # each mosque's profile, read ONCE
+    python -m collector.profile --jumuah         # weekly: re-check Jumu'ah times only
 
 For each mosque with a website (checked weekly, newest first):
   1. read the home page plus up to 4 pages about Jumu'ah / Friday prayer,
@@ -220,10 +221,52 @@ def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, tod
     return fields
 
 
+JUMUAH_ONLY = """This is text from the Jumu'ah / Friday prayer page of a UK mosque: {name}, {where}.
+Return ONLY JSON {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": "short note or null"}}.
+24-hour HH:MM, null for parts not printed. If summer and winter times are both shown, give the ones for {today}
+(UK clocks go back on the last Sunday of October, forward on the last Sunday of March). If none are shown: {{"slots": []}}.
+
+TEXT:
+{text}
+"""
+
+
+def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
+    """Weekly: re-read only the page the Jumu'ah times came from; AI only when that page changed."""
+    now = datetime.now(timezone.utc).isoformat()
+    j = m["jumuah"] or {}
+    url = j.get("url")
+    if not url:
+        return {"jumuah_checked_at": now}
+    if MEDIA.search(url):                                     # poster / PDF
+        data_hash = hashlib.sha256(fetch.get(url)[0]).hexdigest()
+        if data_hash == m.get("jumuah_hash"):
+            return {"jumuah_checked_at": now}
+        new = read_poster(m, url, reader, today)
+    else:
+        body, ctype, _ = fetch.get(url)
+        text = relevant(page_text(body, url)[0])
+        if not HAS_TIME.search(text):
+            try:
+                text = relevant(page_text(fetch.render(url), url)[0])
+            except (fetch.Blocked, fetch.FetchError):
+                pass
+        data_hash = hashlib.sha256(re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text).encode()).hexdigest()
+        if data_hash == m.get("jumuah_hash"):
+            return {"jumuah_checked_at": now}
+        new = clean_jumuah(reader.ask(JUMUAH_ONLY.format(name=m["name"], where=where(m), today=today, text=text[:8000]),
+                                      max_tokens=400))
+    f = {"jumuah_checked_at": now, "jumuah_hash": data_hash}
+    if new:
+        f["jumuah"] = {**new, "src": j.get("src"), "url": url, "at": now[:10]}
+    return f
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=200)
     ap.add_argument("--workers", type=int, default=config.WORKERS)
+    ap.add_argument("--jumuah", action="store_true", help="weekly refresh of Jumu'ah times only")
     ap.add_argument("--try", dest="try_url", metavar="URL", help="read one website and print the profile (nothing saved)")
     args = ap.parse_args()
     from zoneinfo import ZoneInfo
@@ -238,13 +281,30 @@ def main():
         return
     from .store import Store
     store = Store()
-    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,sources(url,recipe)"
-                                f"&active=is.true&website=not.is.null"
-                                f"&or=(profile_checked_at.is.null,profile_checked_at.lt.{week_ago})"
-                                "&order=profile_priority.desc,profile_checked_at.asc.nullsfirst,id",
-                         headers={"Range": f"0-{args.limit - 1}"})
     reader = Reader(max_calls=config.MAX_AI_CALLS_LEARN)
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    if args.jumuah:
+        rows = store._req("GET", "mosques?select=id,name,address,town,postcode,jumuah,jumuah_hash&active=is.true"
+                                 f"&jumuah=not.is.null&or=(jumuah_checked_at.is.null,jumuah_checked_at.lt.{week_ago})"
+                                 "&order=jumuah_checked_at.asc.nullsfirst", headers={"Range": f"0-{args.limit - 1}"})
+        changed, log = 0, []
+
+        def jone(m):
+            try:
+                f = refresh_jumuah(m, reader, today)
+            except Exception as e:
+                return f"{m['name']}: {str(e)[:100]}"
+            store._req("PATCH", f"mosques?id=eq.{m['id']}", json=f, headers={"Prefer": "return=minimal"})
+            return f"{m['name']}: " + ("updated " + ", ".join(s.get("jamaat") or s.get("khutbah") for s in f["jumuah"]["slots"])
+                                       if f.get("jumuah") else "unchanged")
+        with ThreadPoolExecutor(max_workers=args.workers) as pool:
+            log = [f.result() for f in as_completed([pool.submit(jone, m) for m in rows])]
+        print(f"## Jumu'ah refresh\n\n{len(rows)} checked · AI calls: {reader.calls}\n\n" + "\n".join(f"- {l}" for l in sorted(log)))
+        return
+    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,sources(url,recipe)"
+                                "&active=is.true&website=not.is.null&profile_checked_at=is.null"
+                                "&order=profile_priority.desc,id",
+                         headers={"Range": f"0-{args.limit - 1}"})
     counts, log = {"jumuah": 0, "sisters": 0, "unchanged": 0, "nothing": 0, "blocked": 0, "error": 0}, []
 
     def one(m):

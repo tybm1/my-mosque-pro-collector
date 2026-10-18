@@ -160,3 +160,5 @@ alter table mosques add column if not exists verify_note   text;
 alter table mosques add column if not exists verified_at   timestamptz;
 -- the app drops hidden listings (closed, duplicates) without needing an app update
 create policy "app sees hidden listings" on mosques for select to anon using (active = false);
+alter table mosques add column if not exists jumuah_hash text;              -- weekly Jumu'ah re-check: AI only when this changes
+alter table mosques add column if not exists jumuah_checked_at timestamptz;
