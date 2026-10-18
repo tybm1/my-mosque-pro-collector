@@ -153,3 +153,10 @@ create table if not exists submissions (
   created_at timestamptz not null default now()
 );
 alter table submissions enable row level security;
+
+-- Listing checks (collector.verify, Google Places): only the place id and our own outcome are kept
+alter table mosques add column if not exists verify_status text check (verify_status in ('open','renamed?','closed_temp','closed','not_found'));
+alter table mosques add column if not exists verify_note   text;
+alter table mosques add column if not exists verified_at   timestamptz;
+-- the app drops hidden listings (closed, duplicates) without needing an app update
+create policy "app sees hidden listings" on mosques for select to anon using (active = false);

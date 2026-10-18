@@ -240,3 +240,27 @@ def test_relevant_keeps_only_profile_lines():
     text = "Welcome\nOur history\nDonate now\nJumu'ah prayers\n1st khutbah 1:15pm\nSisters' prayer hall upstairs\nCopyright"
     out = relevant(text)
     assert "1st khutbah 1:15pm" in out and "Sisters' prayer hall upstairs" in out
+
+
+# ─────────── listing check (Google Places), with Google replaced by a stand-in ───────────
+
+def _place(pid, name, addr, lat, lng, status="OPERATIONAL", types=("mosque",)):
+    return {"id": pid, "displayName": {"text": name}, "formattedAddress": addr, "businessStatus": status,
+            "types": list(types), "location": {"latitude": lat, "longitude": lng}}
+
+
+M = {"id": 1, "name": "Green Lane Masjid", "town": "Birmingham", "postcode": "B9 5DB", "lat": 52.4720, "lng": -1.8640}
+
+
+def test_verify_open_closed_renamed_missing(monkeypatch):
+    from collector import verify
+    replies = []
+    monkeypatch.setattr(verify, "search", lambda body: replies.pop(0))
+    replies[:] = [[_place("a", "Green Lane Masjid", "20 Green Ln, Birmingham B9 5DB, UK", 52.4721, -1.8641)]]
+    assert verify.judge(M)[0] == "open"
+    replies[:] = [[_place("b", "Green Lane Masjid", "Birmingham B9 5DB", 52.4721, -1.8641, "CLOSED_PERMANENTLY")]]
+    assert verify.judge(M)[0] == "closed"
+    replies[:] = [[], [_place("c", "Masjid Al-Noor", "Birmingham B9 5DA", 52.4722, -1.8642)]]
+    assert verify.judge(M)[0] == "renamed?"
+    replies[:] = [[_place("d", "Tesco", "Leeds LS1 1AA", 53.8, -1.55, types=("store",))], []]
+    assert verify.judge(M) == ("not_found", None, "nothing on Google at this postcode")
