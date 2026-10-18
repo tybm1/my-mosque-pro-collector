@@ -4,11 +4,12 @@ on:
   schedule:
     - cron: "15 3 * * *"     # every day 03:15 UTC (04:15 UK summer time)
     - cron: "30 4 * * 1"     # Mondays: find timetables for mosques with no website on file
+    - cron: "15 10,16,22 * * *"   # TEMPORARY catch-up: learn 300 more websites 3 extra times a day (remove once all learned)
   workflow_dispatch:          # "Run workflow" button in GitHub for a manual run
     inputs:
       learn_limit:
         description: "Websites to learn recipes for in this run"
-        default: "150"
+        default: "400"
       profile_limit:
         description: "Mosque websites to read for Jumu'ah / sisters / facilities in this run"
         default: "200"
@@ -49,7 +50,7 @@ jobs:
 
       - name: Learn recipes for new or changed websites
         if: github.event.schedule != '30 4 * * 1'
-        run: python -m collector.learn --limit ${{ inputs.learn_limit || '150' }}
+        run: python -m collector.learn --limit ${{ inputs.learn_limit || (github.event.schedule == '15 10,16,22 * * *' && '300') || '150' }}
         continue-on-error: true
 
       - name: Read mosque websites for Jumu'ah times, sisters' area and facilities (weekly per mosque)
