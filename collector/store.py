@@ -23,8 +23,8 @@ class Store:
     def due_sources(self) -> list[dict]:
         rows, start = [], 0
         while True:
-            page = self._req("GET", "sources?select=*,mosques(id,name,address,town,postcode,lat,lng)"
-                                    "&enabled=is.true&blocked_reason=is.null&order=id",
+            page = self._req("GET", "sources?select=*,mosques!inner(id,name,address,town,postcode,lat,lng)"
+                                    "&enabled=is.true&blocked_reason=is.null&mosques.active=is.true&order=id",
                              headers={"Range": f"{start}-{start + 999}"})
             rows += page
             if len(page) < 1000:

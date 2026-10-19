@@ -379,8 +379,8 @@ def candidate_pages(body: bytes, base: str, site: str) -> list[str]:
 
 def due(store, limit: int) -> list[dict]:
     month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = store._req("GET", "sources?select=*,mosques(id,name,address,town,postcode,lat,lng,website)"
-                             "&enabled=is.true&blocked_reason=is.null"
+    rows = store._req("GET", "sources?select=*,mosques!inner(id,name,address,town,postcode,lat,lng,website)"
+                             "&enabled=is.true&blocked_reason=is.null&mosques.active=is.true"
                              f"&or=(recipe_status.is.null,recipe_status.eq.broken,and(recipe_status.eq.none,recipe_learned_at.lt.{month_ago}))"
                              "&order=priority.desc,recipe_status.asc.nullsfirst,id", headers={"Range": f"0-{limit - 1}"})
     return rows
