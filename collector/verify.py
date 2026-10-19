@@ -105,9 +105,15 @@ def main():
         raise SystemExit("Set GOOGLE_PLACES_KEY to check listings with Google Places")
     store = Store()
     cutoff = (datetime.now(timezone.utc) - timedelta(days=90)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    rows = store._req("GET", "mosques?select=id,name,town,postcode,lat,lng,source_note"
-                             f"&active=is.true&or=(verified_at.is.null,verified_at.lt.{cutoff})"
-                             "&order=verified_at.asc.nullsfirst,id", headers={"Range": f"0-{args.limit - 1}"})
+    rows = []                                   # the database returns at most 1,000 rows per request
+    while len(rows) < args.limit:
+        page = store._req("GET", "mosques?select=id,name,town,postcode,lat,lng,source_note"
+                                 f"&active=is.true&or=(verified_at.is.null,verified_at.lt.{cutoff})"
+                                 "&order=verified_at.asc.nullsfirst,id",
+                          headers={"Range": f"{len(rows)}-{min(args.limit, len(rows) + 1000) - 1}"})
+        rows += page
+        if len(page) < 1000:
+            break
     counts, review, failures = {}, [], []
     for m in rows:
         try:
