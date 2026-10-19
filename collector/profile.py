@@ -231,12 +231,15 @@ TEXT:
 """
 
 
+MANUAL = "manual"   # jumuah_hash value for Jumu'ah times entered by hand
+
+
 def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     """Weekly: re-read only the page the Jumu'ah times came from; AI only when that page changed."""
     now = datetime.now(timezone.utc).isoformat()
     j = m["jumuah"] or {}
     url = j.get("url")
-    if not url:
+    if not url or m.get("jumuah_hash") == MANUAL:
         return {"jumuah_checked_at": now}
     if MEDIA.search(url):                                     # poster / PDF
         data_hash = hashlib.sha256(fetch.get(url)[0]).hexdigest()
@@ -301,7 +304,7 @@ def main():
             log = [f.result() for f in as_completed([pool.submit(jone, m) for m in rows])]
         print(f"## Jumu'ah refresh\n\n{len(rows)} checked · AI calls: {reader.calls}\n\n" + "\n".join(f"- {l}" for l in sorted(log)))
         return
-    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,sources(url,recipe)"
+    mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,jumuah_hash,sisters_web,sources(url,recipe)"
                                 "&active=is.true&website=not.is.null&profile_checked_at=is.null"
                                 "&order=profile_priority.desc,id",
                          headers={"Range": f"0-{args.limit - 1}"})
@@ -319,6 +322,11 @@ def main():
             return "blocked", f"{m['name']}: website refuses automated visits"
         except Exception as e:
             return "error", f"{m['name']}: {str(e)[:120]}"
+        if m.get("jumuah_hash") == MANUAL:          # times given to us by hand: never overwrite them
+            f.pop("jumuah", None)
+            if m.get("sisters_web"):
+                f.pop("sisters_web", None)
+                f.pop("sisters_web_note", None)
         store._req("PATCH", f"mosques?id=eq.{m['id']}", json=f, headers={"Prefer": "return=minimal"})
         if "profile_at" not in f:
             return "unchanged", f"{m['name']}: unchanged"
