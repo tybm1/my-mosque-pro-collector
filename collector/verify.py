@@ -108,12 +108,23 @@ def main():
     rows = store._req("GET", "mosques?select=id,name,town,postcode,lat,lng,source_note"
                              f"&active=is.true&or=(verified_at.is.null,verified_at.lt.{cutoff})"
                              "&order=verified_at.asc.nullsfirst,id", headers={"Range": f"0-{args.limit - 1}"})
-    counts, review = {}, []
+    counts, review, failures = {}, [], []
     for m in rows:
         try:
             outcome, pid, note = judge(m)
         except Exception as e:
-            print(f"{m['name']}: lookup failed — {str(e)[:100]}")
+            detail = getattr(getattr(e, "response", None), "text", "") or str(e)
+            failures.append(detail[:400])
+            print(f"{m['name']}: lookup failed — {detail[:300]}")
+            if len(failures) >= 5 and not counts:
+                msg = ("## Listing check stopped — Google refused every lookup\n\nGoogle's message:\n\n```\n"
+                       + failures[0] + "\n```\n\nUsually: Places API (New) not enabled on the key's project, "
+                       "the key restricted to a different API, or billing not linked.")
+                print(msg)
+                if os.environ.get("GITHUB_STEP_SUMMARY"):
+                    with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+                        fh.write(msg + "\n")
+                raise SystemExit(1)
             continue
         now = datetime.now(timezone.utc).isoformat()
         f = {"verify_status": outcome, "verify_note": note or None, "verified_at": now}
