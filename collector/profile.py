@@ -232,6 +232,22 @@ TEXT:
 
 
 MANUAL = "manual"   # jumuah_hash value for Jumu'ah times entered by hand
+CLOCK_WINDOW = 14   # days after a UK clock change during which every Jumu'ah is re-read
+
+
+def last_sunday(year: int, month: int):
+    from datetime import date
+    d = date(year, month, 31)
+    return d - timedelta(days=(d.weekday() + 1) % 7)
+
+
+def recent_clock_change(today):
+    """The UK clocks change on the last Sunday of March and October. Returns that date if it was
+    within CLOCK_WINDOW days before today (Jumu'ah times usually move with the clocks), else None."""
+    for d in (last_sunday(today.year, 10), last_sunday(today.year, 3)):
+        if 0 <= (today - d).days <= CLOCK_WINDOW:
+            return d
+    return None
 
 
 def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
@@ -241,9 +257,11 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     url = j.get("url")
     if not url or m.get("jumuah_hash") == MANUAL:
         return {"jumuah_checked_at": now}
+    change = recent_clock_change(today)
+    force = bool(change and (j.get("at") or "") < change.isoformat())   # read before the clocks changed
     if MEDIA.search(url):                                     # poster / PDF
         data_hash = hashlib.sha256(fetch.get(url)[0]).hexdigest()
-        if data_hash == m.get("jumuah_hash"):
+        if not force and data_hash == m.get("jumuah_hash"):
             return {"jumuah_checked_at": now}
         new = read_poster(m, url, reader, today)
     else:
@@ -255,7 +273,7 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
             except (fetch.Blocked, fetch.FetchError):
                 pass
         data_hash = hashlib.sha256(re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text).encode()).hexdigest()
-        if data_hash == m.get("jumuah_hash"):
+        if not force and data_hash == m.get("jumuah_hash"):
             return {"jumuah_checked_at": now}
         new = clean_jumuah(reader.ask(JUMUAH_ONLY.format(name=m["name"], where=where(m), today=today, text=text[:8000]),
                                       max_tokens=400))
@@ -287,8 +305,13 @@ def main():
     reader = Reader(max_calls=config.MAX_AI_CALLS_LEARN)
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if args.jumuah:
+        change = recent_clock_change(today)
+        stale = f",jumuah->>at.lt.{change.isoformat()}" if change else ""
+        if change:
+            print(f"Clocks changed on {change}: re-reading every Jumu'ah read before then")
         rows = store._req("GET", "mosques?select=id,name,address,town,postcode,jumuah,jumuah_hash&active=is.true"
-                                 f"&jumuah=not.is.null&or=(jumuah_checked_at.is.null,jumuah_checked_at.lt.{week_ago})"
+                                 f"&jumuah=not.is.null"
+                                 f"&or=(jumuah_checked_at.is.null,jumuah_checked_at.lt.{week_ago}{stale})"
                                  "&order=jumuah_checked_at.asc.nullsfirst", headers={"Range": f"0-{args.limit - 1}"})
         changed, log = 0, []
 

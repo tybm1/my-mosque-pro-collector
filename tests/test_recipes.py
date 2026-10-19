@@ -264,3 +264,12 @@ def test_verify_open_closed_renamed_missing(monkeypatch):
     assert verify.judge(M)[0] == "renamed?"
     replies[:] = [[_place("d", "Tesco", "Leeds LS1 1AA", 53.8, -1.55, types=("store",))], []]
     assert verify.judge(M) == ("not_found", None, "nothing on Google at this postcode")
+
+
+def test_clock_change_window():
+    from datetime import date
+    from collector.profile import recent_clock_change
+    assert recent_clock_change(date(2026, 10, 24)) is None
+    assert recent_clock_change(date(2026, 10, 30)) == date(2026, 10, 25)
+    assert recent_clock_change(date(2026, 11, 9)) is None
+    assert recent_clock_change(date(2027, 3, 29)) == date(2027, 3, 28)
