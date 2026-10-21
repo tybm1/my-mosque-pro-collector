@@ -282,13 +282,36 @@ def test_user_note_drops_page_talk():
     assert user_note("Summer times, which apply on 2026-10-19. The Hive has different t") is None
 
 
-def test_fill_change_dates():
-    from collector.store import fill_change_dates
-    a = {"fajr": "06:45", "dhuhr": "13:30", "asr": "16:30", "maghrib": "18:05", "isha": "19:30"}
-    b = {"fajr": "06:00", "dhuhr": "13:00", "asr": "15:15", "maghrib": "16:50", "isha": "18:45"}
-    out = fill_change_dates({"2026-10-19": a, "2026-10-25": b})
-    assert out["2026-10-21"] == {**a, "maghrib": None} and out["2026-10-25"] == b
-    assert out["2026-10-31"]["fajr"] == "06:00" and "2026-11-01" not in out
-    daily = {"2026-10-20": a, "2026-10-21": a, "2026-10-22": b}
-    assert fill_change_dates(daily) == daily
-    assert fill_change_dates({"2026-10-21": a}) == {"2026-10-21": a}
+
+def test_change_date_table_carries_times_down():
+    from collector.recipes import rows_to_days
+    spec = {"cols": {"fajr": {"col": 7}, "dhuhr": {"col": 8}, "asr": {"col": 9}, "isha": {"col": 10}},
+            "date_col": 0, "date_style": "day_of_month", "header_rows": 1}
+    begin = ["5:09", "7:08", "12:56", "4:46", "6:47", "8:20"]
+    rows = [["Date"]]
+    for n in range(1, 13):
+        jam = ["", "", "", ""]
+        if n == 1:
+            jam = ["6:30", "1:45", "5:00", "8:30"]
+        if n == 8:
+            jam = ["6:45", "\u201c", "4:45", "8:15"]
+        rows.append([str(n)] + begin + jam)
+    days = rows_to_days(rows, spec, (2026, 10), date(2026, 10, 5))
+    assert days["2026-10-05"] == {"fajr": "6:30", "dhuhr": "1:45", "asr": "5:00", "isha": "8:30"}
+    assert days["2026-10-08"] == {"fajr": "6:45", "dhuhr": "1:45", "asr": "4:45", "isha": "8:15"}
+    assert days["2026-10-12"]["fajr"] == "6:45"
+
+
+def test_daily_table_blank_row_is_not_filled():
+    from collector.recipes import rows_to_days
+    spec = {"cols": {"fajr": {"col": 1}, "maghrib": {"col": 2}, "isha": {"col": 3}},
+            "date_col": 0, "date_style": "day_of_month", "header_rows": 1}
+    rows = [["Date"]] + [[str(n), "6:00", "18:10", "19:45"] for n in range(1, 13)]
+    rows[5] = ["5", "", "", ""]
+    days = rows_to_days(rows, spec, (2026, 10), date(2026, 10, 5))
+    assert "2026-10-05" not in days and days["2026-10-06"]["maghrib"] == "18:10"
+
+
+def test_saving_never_invents_days():
+    import collector.store as st
+    assert not hasattr(st, "fill_change_dates")

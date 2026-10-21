@@ -201,12 +201,21 @@ def _pick(text: str, nth: int) -> str | None:
     return ts[nth] if -len(ts) <= nth < len(ts) else None
 
 
+DITTO = re.compile(r'^\s*(["\u201c\u201d\u2033\u3003]|\'\'|do)\s*$', re.I)
+
+
 def rows_to_days(rows: list[list[str]], spec: dict, ctx: tuple[int, int] | None, today: date) -> dict:
-    """Apply a table spec to rows of cell text → {iso_date: {prayer: 'H:MM'}}."""
+    """Apply a table spec to rows of cell text → {iso_date: {prayer: 'H:MM'}}.
+
+    Some timetables print a jamaat time only on the day it changes, with ditto marks or blank cells
+    on the days after ("same as above"). A ditto mark always means the time above. Blank jamaat cells
+    are read as "same as above" only when the table is clearly written that way: every dated row has
+    begin times, and most dated rows have no jamaat times at all. Maghrib is never carried down
+    (it follows sunset, which moves every day)."""
     cols = spec["cols"]
     style = spec.get("date_style", "day_of_month")
     dcol = spec["date_col"]
-    days, last = {}, None
+    parsed, last = [], None
     for row in rows[spec.get("header_rows", 1):]:
         if dcol >= len(row):
             continue
@@ -221,12 +230,30 @@ def rows_to_days(rows: list[list[str]], spec: dict, ctx: tuple[int, int] | None,
             except ValueError:
                 continue
         last = d
-        out = {}
+        out, ditto = {}, set()
         for key, c in cols.items():
             if not c or c.get("col") is None or c["col"] >= len(row):
                 continue
             cell = row[c["col"]]
+            if key != "jumuah" and DITTO.match(cell or ""):
+                ditto.add(key)
+                out[key] = None
+                continue
             out[key] = cell[:60] if key == "jumuah" and cell else _pick(cell, c.get("nth", 0))
+        begins = sum(1 for c in row if TIME.search(c or "")) >= 3
+        parsed.append((d, out, ditto, begins))
+    with_jamaat = [p for p in parsed if any(p[1].get(k) for k in PRAYER_KEYS)]
+    sparse = (len(parsed) >= 10 and all(p[3] for p in parsed)
+              and len(with_jamaat) <= 0.5 * len(parsed))
+    days, prev = {}, {}                   # prev: the latest jamaat time above, per prayer
+    for d, out, ditto, _ in parsed:
+        has_own = any(out.get(k) for k in PRAYER_KEYS)
+        for key in out:
+            if key in ("maghrib", "jumuah") or out[key]:
+                continue
+            if key in ditto or (sparse and not has_own):
+                out[key] = prev.get(key)
+        prev.update({k: out[k] for k in PRAYER_KEYS if out.get(k)})
         if any(out.get(p) for p in PRAYER_KEYS):
             days[d.isoformat()] = out
     return days
