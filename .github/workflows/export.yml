@@ -18,15 +18,20 @@ jobs:
           python-version: "3.12"
       - run: pip install requests
       - run: python scripts/export_jamaat.py
+        env:
+          PYTHONPATH: .
+      - run: python scripts/export_jumuah.py
+        env:
+          PYTHONPATH: .
       - name: Commit CSV to export-data branch
         run: |
           git config user.name "My Mosque Pro"
           git config user.email "noreply@anthropic.com"
-          cp exports/jamaat.csv /tmp/jamaat.csv
+          cp exports/jamaat.csv exports/jumuah.csv /tmp/
           git fetch origin export-data || true
           git checkout -B export-data
           git rm -rq --cached . || true
-          mkdir -p exports && cp /tmp/jamaat.csv exports/jamaat.csv
-          git add -f exports/jamaat.csv
+          mkdir -p exports && cp /tmp/jamaat.csv /tmp/jumuah.csv exports/
+          git add -f exports/jamaat.csv exports/jumuah.csv
           git commit -qm "Export $(date -u +%F)"
           git push -f origin export-data
