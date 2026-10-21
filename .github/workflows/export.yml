@@ -22,6 +22,9 @@ jobs:
         env:
           PYTHONPATH: .
         continue-on-error: true
+      - run: python scripts/load_manual_jamaat.py
+        env:
+          PYTHONPATH: .
       - run: python scripts/clean_jumuah_notes.py
         env:
           PYTHONPATH: .
