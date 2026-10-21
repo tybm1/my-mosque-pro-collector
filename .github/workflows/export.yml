@@ -1,0 +1,32 @@
+name: Export jamaat times
+# Push anything to the "export" branch to run; the CSV is committed to the "export-data" branch.
+on:
+  push:
+    branches: [export]
+permissions:
+  contents: write
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SERVICE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - run: python scripts/export_jamaat.py
+      - name: Commit CSV to export-data branch
+        run: |
+          git config user.name "My Mosque Pro"
+          git config user.email "noreply@anthropic.com"
+          cp exports/jamaat.csv /tmp/jamaat.csv
+          git fetch origin export-data || true
+          git checkout -B export-data
+          git rm -rq --cached . || true
+          mkdir -p exports && cp /tmp/jamaat.csv exports/jamaat.csv
+          git add -f exports/jamaat.csv
+          git commit -qm "Export $(date -u +%F)"
+          git push -f origin export-data
