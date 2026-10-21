@@ -31,6 +31,15 @@ class Store:
                 return rows
             start += 1000
 
+    def mosques_with_day(self, day: str) -> set[int]:
+        have, start = set(), 0
+        while True:
+            page = self._req("GET", f"jamaat_times?select=mosque_id&day=eq.{day}", headers={"Range": f"{start}-{start + 999}"})
+            have |= {r["mosque_id"] for r in page}
+            if len(page) < 1000:
+                return have
+            start += 1000
+
     def update_source(self, sid: int, fields: dict):
         self._req("PATCH", f"sources?id=eq.{sid}", json=fields, headers={"Prefer": "return=minimal"})
 

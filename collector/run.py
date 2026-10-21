@@ -229,13 +229,24 @@ class _Counter:
 
 
 def main():
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--missing", action="store_true", help="only re-read sites whose mosque has no times for today yet")
+    args = ap.parse_args()
     today = datetime.now(ZoneInfo(config.TIMEZONE)).date()
     store, reader = Store(), Reader()
+    sources = store.due_sources()
+    if args.missing:
+        have = store.mosques_with_day(today.isoformat())
+        sources = [s for s in sources if s["mosque_id"] not in have]
+        for s in sources:
+            s["last_hash"] = None            # read the page again even if it looked unchanged earlier
+        print(f"Retry: {len(sources)} sites still missing today's times")
     run_id = store.start_run()
     stats = Stats()
     log = []
     with ThreadPoolExecutor(max_workers=config.WORKERS) as pool:
-        futs = [pool.submit(process, src, today, reader, store, _Counter(stats)) for src in store.due_sources()]
+        futs = [pool.submit(process, src, today, reader, store, _Counter(stats)) for src in sources]
         for f in as_completed(futs):
             log.append(f.result())
     stats["ai_calls"] = reader.calls

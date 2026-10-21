@@ -3,6 +3,8 @@ name: Collect jamaat times
 on:
   schedule:
     - cron: "20 0 * * *"     # every day 00:20 UTC (01:20 UK summer time, 00:20 winter): many sites only show today's times, so read them just after midnight
+    - cron: "20 5 * * *"     # retry: re-read only sites still missing today's times
+    - cron: "20 11 * * *"    # final retry + strict check (fails, and GitHub emails you, if under 95%)
     - cron: "30 4 * * 1"     # Mondays: find timetables for mosques with no website on file
   workflow_dispatch:          # "Run workflow" button in GitHub for a manual run
     inputs:
@@ -39,6 +41,11 @@ jobs:
       - name: Install headless browser (for sites that show times with JavaScript)
         run: python -m playwright install --with-deps chromium
 
+      - name: Collect today's jamaat times (first, so they're ready as early as possible)
+        if: github.event.schedule == '20 0 * * *' || github.event_name == 'workflow_dispatch'
+        run: python -m collector.run
+        continue-on-error: true
+
       - name: Find timetables for mosques without a website (Mondays or when asked)
         if: github.event.schedule == '30 4 * * 1' || inputs.discover
         run: |
@@ -48,12 +55,12 @@ jobs:
         continue-on-error: true
 
       - name: Learn recipes for new or changed websites
-        if: github.event.schedule != '30 4 * * 1'
+        if: github.event.schedule == '20 0 * * *' || github.event_name == 'workflow_dispatch'
         run: python -m collector.learn --limit ${{ inputs.learn_limit || '150' }}
         continue-on-error: true
 
       - name: Read new mosque websites once for Jumu'ah times, sisters' area and facilities
-        if: github.event.schedule != '30 4 * * 1'
+        if: github.event.schedule == '20 0 * * *' || github.event_name == 'workflow_dispatch'
         run: python -m collector.profile --limit ${{ inputs.profile_limit || '200' }}
         continue-on-error: true
 
@@ -62,6 +69,10 @@ jobs:
         run: python -m collector.profile --jumuah --limit 400
         continue-on-error: true
 
-      - name: Collect today's jamaat times
+      - name: Retry sites still missing today's times
         if: github.event.schedule != '30 4 * * 1'
-        run: python -m collector.run
+        run: python -m collector.run --missing
+
+      - name: Check every readable mosque has today's times
+        if: github.event.schedule != '30 4 * * 1'
+        run: python -m collector.check ${{ github.event.schedule == '20 11 * * *' && '--strict' || '' }}
