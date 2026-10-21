@@ -273,3 +273,10 @@ def test_clock_change_window():
     assert recent_clock_change(date(2026, 10, 30)) == date(2026, 10, 25)
     assert recent_clock_change(date(2026, 11, 9)) is None
     assert recent_clock_change(date(2027, 3, 29)) == date(2027, 3, 28)
+
+
+def test_user_note_drops_page_talk():
+    from collector.profile import user_note
+    assert user_note("Khutbah in English and Arabic. Times are not stated as changing with the clocks.") == "Khutbah in English and Arabic."
+    assert user_note("Jamaat times not printed.") is None
+    assert user_note("Summer times, which apply on 2026-10-19. The Hive has different t") is None

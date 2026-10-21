@@ -39,14 +39,15 @@ PROMPT = """These are extracts from the website of a UK mosque: {name}, {where}.
 If the site covers several mosques or centres, answer ONLY for this one (match by name or street).
 
 Return ONLY JSON:
-{{"jumuah": {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": "short note, e.g. language or 'times change with the clocks'"}} or null,
+{{"jumuah": {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": "short note, e.g. 'Khutbah in English and Arabic'" or null}} or null,
   "sisters": "yes" | "no" | "unknown",
   "sisters_note": "short, e.g. 'Sisters' prayer hall on the first floor'" or null,
   "facilities": ["Wudu area", "Parking", "Wheelchair access", ...]}}
 
 Rules:
 - Jumu'ah: only times printed for Friday prayer (khutbah / jamaat / adhan of Jumu'ah). 24-hour HH:MM. Use null for a part not printed. If no Jumu'ah times are printed, "jumuah": null.
-- If summer and winter Jumu'ah times are both printed, give the ones that apply on {today} (UK clocks go back on the last Sunday of October) and mention the other in the note.
+- If summer and winter Jumu'ah times are both printed, give the ones that apply on {today} (UK clocks go back on the last Sunday of October).
+- Jumu'ah note: only facts useful to a worshipper (khutbah language, brothers/sisters only, a different venue). Never describe the web page or what is or isn't printed. Otherwise null.
 - "sisters": "yes" only if the text says there is a women's / sisters' prayer area or that sisters are welcome to pray; "no" only if it says there isn't; otherwise "unknown".
 - facilities: only things the text clearly states (max 8, short names). Never guess.
 
@@ -83,7 +84,25 @@ def clean_jumuah(j):
         slots.append({"name": str(s.get("name") or f"Jumu'ah {len(slots) + 1}")[:30], "khutbah": f(k), "jamaat": f(q)})
     if not slots:
         return None
-    return {"slots": slots, "note": (str(j.get("note"))[:140] if j.get("note") else None)}
+    return {"slots": slots, "note": user_note(j.get("note"))}
+
+
+# Sentences that describe the web page rather than the prayer are dropped: worshippers see this note.
+META = re.compile(r"print|not stated|not given|not shown|not mention|label|listed|\bpage\b|\bsite\b|website|homepage|timetable|"
+                  r"column|\btable\b|\btext\b|read as|assumed|typo|appears|apply on|applies on|\bshown\b|seasonal|summer|winter|"
+                  r"clock|\bBST\b|\bGMT\b|\b20\d\d\b|approximate|outdated|out of date|check the|not included|not split|only one|"
+                  r"no separate|no khutbah|no jamaat|no jama", re.I)
+
+
+def user_note(note) -> str | None:
+    if not note:
+        return None
+    parts = [p.strip() for p in re.split(r"(?<=[.;])\s+", str(note)) if p.strip()]
+    if parts and not parts[-1].endswith((".", ";", "!", ")")):
+        parts = parts[:-1]                                   # cut off mid-sentence
+    keep = [p.rstrip(";").rstrip(".") for p in parts if not META.search(p)]
+    out = ". ".join(keep)
+    return (out + ".")[:140] if out else None
 
 
 def relevant(text: str, limit: int = 6000) -> str:
@@ -222,7 +241,7 @@ def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, tod
 
 
 JUMUAH_ONLY = """This is text from the Jumu'ah / Friday prayer page of a UK mosque: {name}, {where}.
-Return ONLY JSON {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": "short note or null"}}.
+Return ONLY JSON {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaat": "13:30"}}], "note": null}}. "note" only for facts useful to a worshipper (khutbah language, brothers/sisters only, a different venue), never about the web page.
 24-hour HH:MM, null for parts not printed. If summer and winter times are both shown, give the ones for {today}
 (UK clocks go back on the last Sunday of October, forward on the last Sunday of March). If none are shown: {{"slots": []}}.
 

@@ -16,7 +16,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
-      - run: pip install requests
+      - run: pip install -r requirements.txt
+      - run: python scripts/clean_jumuah_notes.py
+        env:
+          PYTHONPATH: .
       - run: python scripts/export_jamaat.py
         env:
           PYTHONPATH: .
