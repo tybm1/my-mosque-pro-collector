@@ -2,7 +2,7 @@ name: Collect jamaat times
 
 on:
   schedule:
-    - cron: "15 3 * * *"     # every day 03:15 UTC (04:15 UK summer time)
+    - cron: "20 0 * * *"     # every day 00:20 UTC (01:20 UK summer time, 00:20 winter): many sites only show today's times, so read them just after midnight
     - cron: "30 4 * * 1"     # Mondays: find timetables for mosques with no website on file
   workflow_dispatch:          # "Run workflow" button in GitHub for a manual run
     inputs:
@@ -58,7 +58,7 @@ jobs:
         continue-on-error: true
 
       - name: Re-check Jumu'ah times (each mosque weekly; AI only when the page changed)
-        if: github.event.schedule == '15 3 * * *'
+        if: github.event.schedule == '20 0 * * *'
         run: python -m collector.profile --jumuah --limit 400
         continue-on-error: true
 
