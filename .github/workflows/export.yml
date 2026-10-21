@@ -17,6 +17,11 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - run: python -m playwright install --with-deps chromium
+      - run: python scripts/page_dump.py
+        env:
+          PYTHONPATH: .
+        continue-on-error: true
       - run: python scripts/clean_jumuah_notes.py
         env:
           PYTHONPATH: .
@@ -30,11 +35,11 @@ jobs:
         run: |
           git config user.name "My Mosque Pro"
           git config user.email "noreply@anthropic.com"
-          cp exports/jamaat.csv exports/jumuah.csv /tmp/
+          cp exports/jamaat.csv exports/jumuah.csv /tmp/ && cp -r exports/pages /tmp/pages || true
           git fetch origin export-data || true
           git checkout -B export-data
           git rm -rq --cached . || true
-          mkdir -p exports && cp /tmp/jamaat.csv /tmp/jumuah.csv exports/
-          git add -f exports/jamaat.csv exports/jumuah.csv
+          mkdir -p exports && cp /tmp/jamaat.csv /tmp/jumuah.csv exports/ && (cp -r /tmp/pages exports/ || true)
+          git add -f exports
           git commit -qm "Export $(date -u +%F)"
           git push -f origin export-data
