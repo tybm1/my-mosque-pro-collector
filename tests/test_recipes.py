@@ -280,3 +280,15 @@ def test_user_note_drops_page_talk():
     assert user_note("Khutbah in English and Arabic. Times are not stated as changing with the clocks.") == "Khutbah in English and Arabic."
     assert user_note("Jamaat times not printed.") is None
     assert user_note("Summer times, which apply on 2026-10-19. The Hive has different t") is None
+
+
+def test_fill_change_dates():
+    from collector.store import fill_change_dates
+    a = {"fajr": "06:45", "dhuhr": "13:30", "asr": "16:30", "maghrib": "18:05", "isha": "19:30"}
+    b = {"fajr": "06:00", "dhuhr": "13:00", "asr": "15:15", "maghrib": "16:50", "isha": "18:45"}
+    out = fill_change_dates({"2026-10-19": a, "2026-10-25": b})
+    assert out["2026-10-21"] == {**a, "maghrib": None} and out["2026-10-25"] == b
+    assert out["2026-10-31"]["fajr"] == "06:00" and "2026-11-01" not in out
+    daily = {"2026-10-20": a, "2026-10-21": a, "2026-10-22": b}
+    assert fill_change_dates(daily) == daily
+    assert fill_change_dates({"2026-10-21": a}) == {"2026-10-21": a}
