@@ -22,6 +22,10 @@ jobs:
         env:
           PYTHONPATH: .
         continue-on-error: true
+      - run: python scripts/debug_sources.py
+        env:
+          PYTHONPATH: .
+        continue-on-error: true
       - run: python scripts/load_manual_jamaat.py
         env:
           PYTHONPATH: .
