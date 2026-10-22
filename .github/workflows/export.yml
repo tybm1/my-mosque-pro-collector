@@ -26,6 +26,10 @@ jobs:
         env:
           PYTHONPATH: .
         continue-on-error: true
+      - run: python scripts/learn_probe.py
+        env:
+          PYTHONPATH: .
+        continue-on-error: true
       - run: python scripts/load_manual_jamaat.py
         env:
           PYTHONPATH: .
