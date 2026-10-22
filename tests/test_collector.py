@@ -119,3 +119,18 @@ def test_relearn_miss_keeps_working_recipe_then_gives_up():
     assert keep_working_recipe(None, none, "")[1] == "none"
     new = {"kind": "table", "table": {}}
     assert keep_working_recipe(old, new, "ok") == (new, "ok", "ok")
+
+
+def test_relearn_miss_retried_when_source_gave_times_recently():
+    from datetime import datetime, timedelta, timezone
+    from collector.learn import keep_working_recipe, worked_recently
+    none = {"kind": "none"}
+    r, st, _ = keep_working_recipe(none, none, "no times on page", recent=True)
+    assert st == "broken" and r["kind"] == "none" and r["relearn_misses"] == 1
+    r, st, _ = keep_working_recipe(r, none, "", recent=True)
+    r, st, _ = keep_working_recipe(r, none, "", recent=True)
+    assert st == "none"
+    now = datetime.now(timezone.utc)
+    assert worked_recently({"last_changed": (now - timedelta(days=1)).isoformat()})
+    assert not worked_recently({"last_changed": (now - timedelta(days=30)).isoformat()})
+    assert not worked_recently({"last_changed": None})

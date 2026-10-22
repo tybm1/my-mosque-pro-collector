@@ -333,6 +333,9 @@ class Learner:
                     more = list(dict.fromkeys(more + more2))
                     body = rbody                # look for timetable links on the rendered page too
                     msg = f"{msg} (also checked in a browser)"
+            if msg.startswith("no times on page") and url == start:
+                first = page_text(body, url)[0].strip().split("\n")[0][:60]
+                msg = f"{msg} [{len(body) // 1024} KB, starts '{first}']"
             notes.append(f"{urlparse(url).path or '/'}: {msg}")
             # timetable files linked from this page
             for href in more:
@@ -357,7 +360,16 @@ WORKING_KINDS = ("table", "fields", "mawaqit", "page_ai", "file_ai")
 RELEARN_TRIES = 3
 
 
-def keep_working_recipe(prev: dict | None, recipe: dict, msg: str) -> tuple[dict, str, str]:
+def worked_recently(src: dict, days: int = 7) -> bool:
+    """True if this source gave times in the last few days (so 'no times on page' now is probably a blip)."""
+    try:
+        when = datetime.fromisoformat(str(src.get("last_changed")).replace("Z", "+00:00"))
+    except ValueError:
+        return False
+    return datetime.now(timezone.utc) - when < timedelta(days=days)
+
+
+def keep_working_recipe(prev: dict | None, recipe: dict, msg: str, recent: bool = False) -> tuple[dict, str, str]:
     """A site that had a working recipe and now shows no times is often only briefly down or mid-update.
     Don't switch it off for a month on one bad look: keep the old recipe (status 'broken', so the daily run
     still tries it and falls back to an AI read) and learn again next run. Give up after RELEARN_TRIES looks.
@@ -365,12 +377,13 @@ def keep_working_recipe(prev: dict | None, recipe: dict, msg: str) -> tuple[dict
     prev = prev or {}
     if recipe["kind"] != "none":
         return recipe, "ok", msg
-    if prev.get("kind") not in WORKING_KINDS:
+    if prev.get("kind") not in WORKING_KINDS and not recent:
         return recipe, "none", msg
     tries = int(prev.get("relearn_misses") or 0) + 1
     if tries >= RELEARN_TRIES:
         return recipe, "none", f"{msg} (no times found {tries} runs in a row)"
-    return ({**prev, "relearn_misses": tries}, "broken",
+    kept = {**prev, "relearn_misses": tries} if prev.get("kind") in WORKING_KINDS else {"kind": "none", "relearn_misses": tries}
+    return (kept, "broken",
             f"no times found when learning again ({tries}/{RELEARN_TRIES}), will try again next run: {msg}")
 
 
@@ -453,7 +466,7 @@ def main():
             # this site's layout keeps shifting: let AI read it whenever it changes instead
             recipe = {"kind": "page_ai", "render": bool(recipe.get("render")), "breaks": breaks}
             msg += " — layout changes often, so AI reads it when it changes"
-        recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg)
+        recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg, worked_recently(src))
         if status == "broken":
             store.update_source(src["id"], {"recipe": recipe, "recipe_status": "broken", "recipe_learned_at": now,
                                             "last_message": msg[:300]})
