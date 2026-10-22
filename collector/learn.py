@@ -353,6 +353,27 @@ class Learner:
         return {"kind": "none"}, "; ".join(notes[-4:])[:300] or "no timetable found", {}, start
 
 
+WORKING_KINDS = ("table", "fields", "mawaqit", "page_ai", "file_ai")
+RELEARN_TRIES = 3
+
+
+def keep_working_recipe(prev: dict | None, recipe: dict, msg: str) -> tuple[dict, str, str]:
+    """A site that had a working recipe and now shows no times is often only briefly down or mid-update.
+    Don't switch it off for a month on one bad look: keep the old recipe (status 'broken', so the daily run
+    still tries it and falls back to an AI read) and learn again next run. Give up after RELEARN_TRIES looks.
+    Returns (recipe, recipe_status, message)."""
+    prev = prev or {}
+    if recipe["kind"] != "none":
+        return recipe, "ok", msg
+    if prev.get("kind") not in WORKING_KINDS:
+        return recipe, "none", msg
+    tries = int(prev.get("relearn_misses") or 0) + 1
+    if tries >= RELEARN_TRIES:
+        return recipe, "none", f"{msg} (no times found {tries} runs in a row)"
+    return ({**prev, "relearn_misses": tries}, "broken",
+            f"no times found when learning again ({tries}/{RELEARN_TRIES}), will try again next run: {msg}")
+
+
 TIMETABLE_FILE_RX = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 
 
@@ -432,7 +453,11 @@ def main():
             # this site's layout keeps shifting: let AI read it whenever it changes instead
             recipe = {"kind": "page_ai", "render": bool(recipe.get("render")), "breaks": breaks}
             msg += " — layout changes often, so AI reads it when it changes"
-        status = "none" if recipe["kind"] == "none" else "ok"
+        recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg)
+        if status == "broken":
+            store.update_source(src["id"], {"recipe": recipe, "recipe_status": "broken", "recipe_learned_at": now,
+                                            "last_message": msg[:300]})
+            return "retry", f"{m['name']}: kept old recipe — {msg}"
         fields = {"recipe": recipe, "recipe_status": status, "recipe_learned_at": now, "last_message": msg[:300],
                   "last_hash": None}
         if tt_url != src["url"]:

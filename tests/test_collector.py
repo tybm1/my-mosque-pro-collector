@@ -102,3 +102,20 @@ def test_monthly_pattern():
     urls = expand_pattern("https://x.org/uploads/{YYYY}/{MM}/Timetable-{MONTH}-{YYYY}.pdf", date(2026, 12, 3))
     assert urls == ["https://x.org/uploads/2026/12/Timetable-December-2026.pdf",
                     "https://x.org/uploads/2027/01/Timetable-January-2027.pdf"]
+
+
+def test_relearn_miss_keeps_working_recipe_then_gives_up():
+    from collector.learn import keep_working_recipe
+    old = {"kind": "fields", "fields": {"fajr": {"sel": "x"}}}
+    none = {"kind": "none"}
+    r, st, _ = keep_working_recipe(old, none, "no times on page")
+    assert st == "broken" and r["kind"] == "fields" and r["relearn_misses"] == 1
+    r, st, _ = keep_working_recipe(r, none, "no times on page")
+    assert st == "broken" and r["relearn_misses"] == 2
+    r, st, _ = keep_working_recipe(r, none, "no times on page")
+    assert st == "none" and r == none
+    # a site that never had a recipe is marked 'none' straight away; a new recipe always wins
+    assert keep_working_recipe({"kind": "none"}, none, "")[1] == "none"
+    assert keep_working_recipe(None, none, "")[1] == "none"
+    new = {"kind": "table", "table": {}}
+    assert keep_working_recipe(old, new, "ok") == (new, "ok", "ok")
