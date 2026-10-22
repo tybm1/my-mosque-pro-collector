@@ -3,6 +3,7 @@ name: Collect jamaat times
 on:
   schedule:
     - cron: "20 0 * * *"     # every day 00:20 UTC (01:20 UK summer time, 00:20 winter): many sites only show today's times, so read them just after midnight
+    - cron: "35 23 * * *"    # summer time: 00:35 UK — read today-only sites soon after midnight (in winter it finds nothing missing and stops)
     - cron: "20 5 * * *"     # retry: re-read only sites still missing today's times
     - cron: "20 11 * * *"    # final retry + strict check (fails, and GitHub emails you, if under 95%)
     - cron: "30 4 * * 1"     # Mondays: find timetables for mosques with no website on file
