@@ -299,7 +299,61 @@ def apply_table_pdf(recipe: dict, data: bytes, today: date, link_label: str = ""
     days = rows_to_days(cand, t, ctx, today)
     if not days:
         raise RecipeError("PDF table found but no dated rows")
-    return days
+    return fill_from_pdf_text(days, text, ctx)
+
+
+_DAYLINE = re.compile(r"^\s*(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?\s+)?(\d{1,2})(?![\d:.])\b(.*)$", re.I)
+
+
+def fill_from_pdf_text(days: dict, text: str, ctx: tuple[int, int] | None) -> dict:
+    """PDF table extraction sometimes merges or drops rows (often every other day, or Fridays).
+    The PDF's plain text usually still has one line per day: 'Fri 23 6:25 7:00 7:51 ...'.
+    Learn which time on a line is which jamaat from days the table did read, then fill only the
+    missing days of that month from lines with the same number of times. Validation runs afterwards."""
+    if not ctx or not text:
+        return days
+    year, month = ctx
+    lines = {}
+    for ln in text.splitlines():
+        m = _DAYLINE.match(ln)
+        if not m:
+            continue
+        dn = int(m.group(1))
+        ts = times_in(m.group(2))
+        if 1 <= dn <= 31 and len(ts) >= 5 and dn not in lines:
+            lines[dn] = ts
+    votes: dict[tuple[int, str], dict[int, int]] = {}
+    for iso, row in days.items():
+        d = date.fromisoformat(iso)
+        if (d.year, d.month) != (year, month) or d.day not in lines:
+            continue
+        ts = lines[d.day]
+        for key in PRAYER_KEYS:
+            v = row.get(key)
+            if not v:
+                continue
+            hits = [i for i, x in enumerate(ts) if x == v]
+            if len(hits) == 1:
+                votes.setdefault((len(ts), key), {}).setdefault(hits[0], 0)
+                votes[(len(ts), key)][hits[0]] += 1
+    mapping: dict[int, dict[str, int]] = {}
+    for (n, key), cnt in votes.items():
+        idx, c = max(cnt.items(), key=lambda kv: kv[1])
+        if c >= 2 and c >= 0.8 * sum(cnt.values()):
+            mapping.setdefault(n, {})[key] = idx
+    if not mapping:
+        return days
+    out = dict(days)
+    for dn, ts in lines.items():
+        try:
+            d = date(year, month, dn)
+        except ValueError:
+            continue
+        cols = mapping.get(len(ts))
+        if d.isoformat() in out or not cols or "fajr" not in cols or "isha" not in cols:
+            continue
+        out[d.isoformat()] = {k: ts[i] for k, i in cols.items()}
+    return out
 
 
 def apply_fields(recipe: dict, html: bytes, today: date) -> dict:
