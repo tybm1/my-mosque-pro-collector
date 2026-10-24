@@ -1,0 +1,233 @@
+URL: https://dmic.co.uk
+
+===== plain =====
+Dartford Masjid and Islamic Centre
+Sign up
+Log in
+Basket:
+(0 items)
+24-Oct-2026
+السبت ٢٤ / أكتوبر / ٢٠٢٦
+Timetable & Calendar
+Fajr
+Zuhr
+Asr
+Maghrib
+Isha
+Begins
+06:02
+12:50
+15:18
+16:52
+19:17
+Jama‘ah
+06:30
+13:30
+16:45
+16:59
+19:45
+Twitter
+Facebook
+YouTube
+Instagram
+Donate
+🌙 Ramadan 2026
+NEW
+Twitter
+➧ DMIC’s mission is to advance the Islamic religion for the benefit of the public in Dartford and the surrounding areas ➧ The Prophet (peace be upon him) said: “Whoever builds a mosque for Allah, Allah will build for him a house like it in Paradise.” [Ṣaḥīḥ al-Bukhārī 450, Ṣaḥīḥ Muslim 533] ➧ Please donate generously for building the mosque in Dartford ➧
+Like most websites, this site uses cookies to assist with navigation and your ability to provide feedback, analyse your use of products and services so that we can improve them, assist with our personal promotional and marketing efforts and provide consent from third parties.
+OK
+
+--- links ---
+../Prayer-Times/Monthly-Prayer-Timetable-October-2026.pdf
+/Lobby/SignUp.aspx?ReturnURL=%2f
+/Quran.php
+/about.php
+/askImamm.php
+/category-haartical.php?catid=8
+/checkout
+/comunitysupports.php
+/credit.php
+/donate/donate-now/5/credit-card
+/funeralservices.php
+/ieadcenter.php
+/index.php
+/login
+/login?ReturnURL=%2f
+/pledge.php
+/prayer.php
+/service&facilities.php
+/video.php
+2main.min.css
+about.php
+assets/css/baseframework.css
+assets/css/boilerplate.css
+assets/css/handlers.css
+assets/css/main.min.css
+assets/css/style.css
+assets/css/style/jquery-ui.css
+career.php
+contact.php
+credit.php
+css/animate.min.css
+css/bootstrap.min.css
+css/elements.css
+css/font/flaticon.css
+css/fontawesome-all.min.css
+css/magnific-popup.css
+css/main.css
+css/meanmenu.min.css
+css/normalize.css
+fonts/flaticon.css
+https://dmic.co.uk/credit.php
+https://iceurope.org/
+https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css
+https://twitter.com/
+https://twitter.com/elondonmosque
+https://www.facebook.com/Dartfordmasjidandislamiccentre
+https://www.instagram.com/?hl=en
+https://www.youtube.com/channel/UCzDRuBdBcVzs9iKUJU6mE-Q
+img-library/1692538083_Web-Slides-Place-secured.png
+img-library/1692541623_Web-Slides-Thank-you.png
+img-library/1721928152_Web-Slides-Alhamdulillah.jpg
+img-library/1779795589_Eidul0Adha-2026-b.jpg
+img/favicon.png
+index.php
+privacy-policy.php
+ramadan.php
+single-departments.php?newsid=42
+single-departments.php?newsid=43
+single-departments.php?newsid=44
+single-departments.php?newsid=45
+single-news.php?newsid=32
+single-news.php?newsid=61
+single-news.php?newsid=62
+single-news.php?newsid=64
+single-news.php?newsid=65
+single-news.php?newsid=66
+single-news.php?newsid=67
+single-news.php?newsid=68
+single-news.php?newsid=69
+single-news.php?newsid=70
+sitemap.php
+style.css
+terms-and-conditions.php
+vendor/OwlCarousel/owl.carousel.min.css
+vendor/OwlCarousel/owl.theme.default.min.css
+vendor/slider/css/nivo-slider.css
+
+===== rendered =====
+Dartford Masjid and Islamic Centre
+Sign up
+Log in
+Basket:
+(0 items)
+24-Oct-2026
+السبت ٢٤ / أكتوبر / ٢٠٢٦
+Timetable & Calendar
+Fajr
+Zuhr
+Asr
+Maghrib
+Isha
+Begins
+06:02
+12:50
+15:18
+16:52
+19:17
+Jama‘ah
+06:30
+13:30
+16:45
+16:59
+19:45
+Twitter
+Facebook
+YouTube
+Instagram
+Donate
+🌙 Ramadan 2026
+NEW
+Twitter
+➧ DMIC’s mission is to advance the Islamic religion for the benefit of the public in Dartford and the surrounding areas ➧ The Prophet (peace be upon him) said: “Whoever builds a mosque for Allah, Allah will build for him a house like it in Paradise.” [Ṣaḥīḥ al-Bukhārī 450, Ṣaḥīḥ Muslim 533] ➧ Please donate generously for building the mosque in Dartford ➧
+Like most websites, this site uses cookies to assist with navigation and your ability to provide feedback, analyse your use of products and services so that we can improve them, assist with our personal promotional and marketing efforts and provide consent from third parties.
+OK
+
+--- links ---
+../Prayer-Times/Monthly-Prayer-Timetable-October-2026.pdf
+/Lobby/SignUp.aspx?ReturnURL=%2f
+/Quran.php
+/about.php
+/askImamm.php
+/category-haartical.php?catid=8
+/checkout
+/comunitysupports.php
+/credit.php
+/donate/donate-now/5/credit-card
+/funeralservices.php
+/ieadcenter.php
+/index.php
+/login
+/login?ReturnURL=%2f
+/pledge.php
+/prayer.php
+/service&amp;facilities.php
+/video.php
+2main.min.css
+about.php
+assets/css/baseframework.css
+assets/css/boilerplate.css
+assets/css/handlers.css
+assets/css/main.min.css
+assets/css/style.css
+assets/css/style/jquery-ui.css
+career.php
+contact.php
+credit.php
+css/animate.min.css
+css/bootstrap.min.css
+css/elements.css
+css/font/flaticon.css
+css/fontawesome-all.min.css
+css/magnific-popup.css
+css/main.css
+css/meanmenu.min.css
+css/normalize.css
+fonts/flaticon.css
+https://dmic.co.uk/credit.php
+https://iceurope.org/
+https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css
+https://twitter.com/
+https://twitter.com/elondonmosque
+https://www.facebook.com/Dartfordmasjidandislamiccentre
+https://www.instagram.com/?hl=en
+https://www.youtube.com/channel/UCzDRuBdBcVzs9iKUJU6mE-Q
+img-library/1692538083_Web-Slides-Place-secured.png
+img-library/1692541623_Web-Slides-Thank-you.png
+img-library/1721928152_Web-Slides-Alhamdulillah.jpg
+img-library/1779795589_Eidul0Adha-2026-b.jpg
+img/favicon.png
+index.php
+privacy-policy.php
+ramadan.php
+single-departments.php?newsid=42
+single-departments.php?newsid=43
+single-departments.php?newsid=44
+single-departments.php?newsid=45
+single-news.php?newsid=32
+single-news.php?newsid=61
+single-news.php?newsid=62
+single-news.php?newsid=64
+single-news.php?newsid=65
+single-news.php?newsid=66
+single-news.php?newsid=67
+single-news.php?newsid=68
+single-news.php?newsid=69
+single-news.php?newsid=70
+sitemap.php
+style.css
+terms-and-conditions.php
+vendor/OwlCarousel/owl.carousel.min.css
+vendor/OwlCarousel/owl.theme.default.min.css
+vendor/slider/css/nivo-slider.css
