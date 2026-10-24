@@ -21,7 +21,7 @@ from .extract import Reader, fingerprint_text, has_times, media_type_for, page_t
 from .recipes import (RecipeError, apply_fields, apply_mawaqit, apply_table_html, apply_table_pdf,
                       pick_file_link, soup_of)
 from .store import Store
-from .validate import check_timetable
+from .validate import PRAYERS, check_timetable, to_minutes
 
 MONTHS = ["January", "February", "March", "April", "May", "June", "July",
           "August", "September", "October", "November", "December"]
@@ -60,6 +60,14 @@ def read_url(url: str, mosque: dict, today: date, reader: Reader, seen: set, ren
     return ("ok" if out.get("has_jamaat") else "no_times"), fp, out.get("days", {}), out.get("note", ""), links
 
 
+def drop_empty_days(days: dict) -> dict:
+    """Drop dates the reader returned with no prayer times at all (e.g. a page's "next Friday" box that
+    shows only the Jumu'ah time). They hold nothing to save, and counting them would make the whole
+    timetable fail the 70% check: today plus a Jumu'ah-only Friday is 1 good day of 2."""
+    return {k: v for k, v in (days or {}).items()
+            if not isinstance(v, dict) or any(to_minutes(v.get(p), p) is not None for p in PRAYERS)}
+
+
 RANK = {"ok": 4, "unchanged": 3, "no_times": 2, "invalid": 1}
 
 
@@ -94,6 +102,7 @@ def ai_read(src: dict, urls: list[str], today: date, reader: Reader, store: Stor
             if not best or RANK[best[0]] < RANK["unchanged"]:
                 best = ("unchanged", fp, {}, "")
             continue
+        days = drop_empty_days(days)
         clean, problems, accepted = check_timetable(days, m["lat"], m["lng"], today) if status == "ok" else ({}, [], False)
         if status == "ok" and not accepted:
             status, note = "invalid", "; ".join(problems[:3]) or "no usable days"

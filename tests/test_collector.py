@@ -2,7 +2,7 @@
 from datetime import date
 
 from collector.extract import fingerprint_text, has_times, page_text, parse_reply
-from collector.run import expand_pattern
+from collector.run import drop_empty_days, expand_pattern
 from collector.suncalc import sun_times
 from collector.validate import check_day, check_timetable, to_minutes
 
@@ -134,3 +134,16 @@ def test_relearn_miss_retried_when_source_gave_times_recently():
     assert worked_recently({"last_changed": (now - timedelta(days=1)).isoformat()})
     assert not worked_recently({"last_changed": (now - timedelta(days=30)).isoformat()})
     assert not worked_recently({"last_changed": None})
+
+
+def test_jumuah_only_friday_does_not_sink_todays_page_read():
+    # Bournemouth / Chatham Hill style: today's times plus a "next Friday" box with only Jumu'ah.
+    days = {"2026-10-24": {"fajr": "6:45", "dhuhr": "1:20", "asr": "4:45", "maghrib": "5:59", "isha": "8:15"},
+            "2026-10-30": {"fajr": None, "dhuhr": None, "asr": None, "maghrib": None, "isha": None, "jumuah": "1:30"}}
+    _, _, accepted = check_timetable(days, 50.74266, -1.87662, date(2026, 10, 24))
+    assert not accepted                      # the safety check itself is unchanged
+    clean, problems, accepted = check_timetable(drop_empty_days(days), 50.74266, -1.87662, date(2026, 10, 24))
+    assert accepted and list(clean) == ["2026-10-24"] and not problems
+    # A day with even one time is still counted (and still fails if it is wrong).
+    assert "2026-10-25" in drop_empty_days({"2026-10-25": {"isha": "8:00"}})
+    assert drop_empty_days({"2026-10-30": {"fajr": "--", "isha": "", "jumuah": "1:30"}}) == {}
