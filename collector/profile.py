@@ -299,6 +299,10 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     f = {"jumuah_checked_at": now, "jumuah_hash": data_hash}
     if new:
         f["jumuah"] = {**new, "src": j.get("src"), "url": url, "at": now[:10]}
+    elif force and (m.get("profile_at") or "") < change.isoformat():
+        # After a clock change the page we read before no longer shows the times (they often move to another
+        # page or a poster). Queue the whole website for the next profile read so new times are found.
+        f.update({"profile_checked_at": None, "profile_hash": None})
     return f
 
 
@@ -328,7 +332,7 @@ def main():
         stale = f",jumuah->>at.lt.{change.isoformat()}" if change else ""
         if change:
             print(f"Clocks changed on {change}: re-reading every Jumu'ah read before then")
-        rows = store._req("GET", "mosques?select=id,name,address,town,postcode,jumuah,jumuah_hash&active=is.true"
+        rows = store._req("GET", "mosques?select=id,name,address,town,postcode,jumuah,jumuah_hash,profile_at&active=is.true"
                                  f"&jumuah=not.is.null"
                                  f"&or=(jumuah_checked_at.is.null,jumuah_checked_at.lt.{week_ago}{stale})"
                                  "&order=jumuah_checked_at.asc.nullsfirst", headers={"Range": f"0-{args.limit - 1}"})
