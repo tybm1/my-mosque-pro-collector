@@ -315,3 +315,31 @@ def test_daily_table_blank_row_is_not_filled():
 def test_saving_never_invents_days():
     import collector.store as st
     assert not hasattr(st, "fill_change_dates")
+
+
+def test_realign_shifted_pdf_rows():
+    # pdfplumber pads cells; every Tuesday is shifted one column left (Masjid Bin Baz, Oct 2026)
+    def row(dn, fajr, mag, shift=0):
+        r = [""] * 14
+        r[1], r[4 - shift], r[7 - shift], r[10 - shift] = "Mon", str(dn), fajr, mag
+        return r
+    rows = [["Day", "", "", "", "Date", "", "", "Fajr", "", "", "Maghrib", "", "", ""]]
+    rows += [row(d, "6:00", f"6:{40 - d}") for d in (1, 2, 3, 4, 5)]
+    rows += [row(6, "6:05", "6:33", shift=1)]
+    rows += [row(d, "6:10", f"6:{40 - d}") for d in (7, 8)]
+    spec = {"date_col": 4, "header_rows": 1, "cols": {"fajr": {"col": 7}, "maghrib": {"col": 10}}}
+    days = recipes.rows_to_days(rows, spec, (2026, 10), date(2026, 10, 5))
+    assert days["2026-10-06"] == {"fajr": "6:05", "maghrib": "6:33"}
+    assert len(days) == 8
+
+
+def test_realign_leaves_compact_tables_alone():
+    # no padding: a missing cell must not slide other prayers' times into its column
+    rows = [["Date", "Fajr", "Dhuhr", "Asr", "Maghrib"]]
+    rows += [[str(d), "6:00", "1:00", "4:00", "6:30"] for d in range(1, 7)]
+    rows += [["7", "", "1:00", "4:00", "6:30", "note"]]
+    spec = {"date_col": 0, "header_rows": 1,
+            "cols": {"fajr": {"col": 1}, "dhuhr": {"col": 2}, "asr": {"col": 3}, "maghrib": {"col": 4}}}
+    days = recipes.rows_to_days(rows, spec, (2026, 10), date(2026, 10, 5))
+    assert days["2026-10-07"]["fajr"] is None
+    assert days["2026-10-07"]["dhuhr"] == "1:00"

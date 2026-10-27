@@ -16,6 +16,7 @@ Recipe kinds
   none      no jamaat times found on the site (checked again monthly)
 """
 import calendar
+from collections import Counter
 import io
 import json
 import re
@@ -201,6 +202,30 @@ def _pick(text: str, nth: int) -> str | None:
     return ts[nth] if -len(ts) <= nth < len(ts) else None
 
 
+def _realign(rows: list[list[str]]) -> list[list[str]]:
+    """PDF table extraction sometimes pads a row with its empty cells in different places
+    (e.g. every Tuesday shifted one column left), so the recipe's column numbers miss it.
+    When most rows share one layout of filled cells, a row with the same number of filled cells
+    at most one column off is put back into that layout, keeping the cells' order."""
+    if len(rows) < 5:
+        return rows
+    layouts = [tuple(i for i, c in enumerate(r) if (c or "").strip()) for r in rows]
+    common, n = Counter(layouts).most_common(1)[0]
+    if n < 0.6 * len(rows) or len(common) < 4:
+        return rows
+    if min(b - a for a, b in zip(common, common[1:])) < 3:
+        return rows                     # only padded tables: a cell 1 column off is unambiguous
+    out = []
+    for r, lay in zip(rows, layouts):
+        if lay != common and len(lay) == len(common) and all(abs(a - b) <= 1 for a, b in zip(lay, common)):
+            new = [""] * max(len(r), common[-1] + 1)
+            for src, dst in zip(lay, common):
+                new[dst] = r[src]
+            r = new
+        out.append(r)
+    return out
+
+
 DITTO = re.compile(r'^\s*(["\u201c\u201d\u2033\u3003]|\'\'|do)\s*$', re.I)
 
 
@@ -216,7 +241,7 @@ def rows_to_days(rows: list[list[str]], spec: dict, ctx: tuple[int, int] | None,
     style = spec.get("date_style", "day_of_month")
     dcol = spec["date_col"]
     parsed, last = [], None
-    for row in rows[spec.get("header_rows", 1):]:
+    for row in _realign(rows[spec.get("header_rows", 1):]):
         if dcol >= len(row):
             continue
         d = parse_date(row[dcol], style, ctx, today)
