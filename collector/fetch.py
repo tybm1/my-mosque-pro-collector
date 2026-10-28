@@ -99,6 +99,10 @@ def _browser():
     return b
 
 
+# True once the page text shows at least five clock times (e.g. "5:18am", "13:00").
+TIMES_SHOWN_JS = r"""() => ((document.body && document.body.innerText) || '').match(/(?<!\d)\d{1,2}[:.]\d{2}(?!\d)/g)?.length >= 5"""
+
+
 def render(url: str) -> bytes:
     """The page's HTML after a headless browser has run its JavaScript.
     Same rules as get(): robots.txt, one visit every few seconds per site, refusals respected."""
@@ -125,6 +129,12 @@ def render(url: str) -> bytes:
         except Exception:
             pass                                # some pages never go quiet (live clocks); use what has loaded
         page.wait_for_timeout(1500)
+        try:
+            # Some sites fill in the timetable well after the page goes quiet: give them a little longer
+            # when no prayer times are showing yet.
+            page.wait_for_function(TIMES_SHOWN_JS, timeout=8000)
+        except Exception:
+            pass
         html = page.content()
     except (Blocked, FetchError):
         raise

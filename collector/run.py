@@ -168,6 +168,11 @@ def process(src: dict, today: date, reader: Reader, store: Store, stats: dict) -
                 stats["changed"] += 1
                 stats["by_recipe"] += 1
                 fields, note = {"last_status": "ok", "last_message": f"{saved} days (recipe)"}, f"{saved} days (recipe)"
+                if recipe.get("relearn_misses") or src.get("recipe_status") == "broken":
+                    # The kept recipe reads the site again: it works, so stop relearning it and clear the
+                    # count of 'no times on page' looks (those are for consecutive misses only).
+                    fields["recipe"] = {k: v for k, v in recipe.items() if k != "relearn_misses"}
+                    fields["recipe_status"] = "ok"
             except RecipeError as e:
                 # Site changed: read it with AI today, and learn the recipe again tomorrow.
                 url = src["url"] if kind != "mawaqit" else recipe["url"]

@@ -191,6 +191,29 @@ def test_daily_run_uses_recipe_without_ai(monkeypatch):
     assert store.saved["2026-10-16"]["dhuhr"] == "13:30" and stats["by_recipe"] == 1
 
 
+def test_kept_recipe_that_reads_again_is_marked_working(monkeypatch):
+    """A recipe kept after 'no times on page' looks, that reads the site fine again, is working:
+    clear the miss count so separate blips on different days don't add up and park the site."""
+    from collector import run
+    fake_web(monkeypatch)
+    store, reader = FakeStore(), FakeReader(None, {})
+    src = {"id": 9, "url": "https://m.org/prayer-times", "recipe": {**table_recipe(), "relearn_misses": 2},
+           "recipe_status": "broken", "fail_count": 0, "mosques": LONDON}
+    run.process(src, TODAY, reader, store, run._Counter(run.Stats()))
+    assert store.updates["recipe_status"] == "ok" and "relearn_misses" not in store.updates["recipe"]
+    assert store.updates["recipe"]["kind"] == "table"
+
+
+def test_working_recipe_is_left_alone(monkeypatch):
+    from collector import run
+    fake_web(monkeypatch)
+    store = FakeStore()
+    src = {"id": 9, "url": "https://m.org/prayer-times", "recipe": table_recipe(), "recipe_status": "ok",
+           "fail_count": 0, "mosques": LONDON}
+    run.process(src, TODAY, FakeReader(None, {}), store, run._Counter(run.Stats()))
+    assert "recipe" not in store.updates and "recipe_status" not in store.updates
+
+
 def test_daily_run_falls_back_to_ai_when_site_changes(monkeypatch):
     from collector import run
     pages = {"https://m.org/prayer-times": b"<html><body><p>Fajr 05:39 jamaat 06:15, Dhuhr 12:44 / 13:30, Asr 15:33 / 16:00, Maghrib 18:05, Isha 19:29 / 19:45</p></body></html>"}
