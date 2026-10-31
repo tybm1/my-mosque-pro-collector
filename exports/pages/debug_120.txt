@@ -1,0 +1,29 @@
+source 120  today 2026-10-31
+{"file": null, "kind": "file_ai", "words": ["full", "timetable", "download", "prayer"], "link_from": "http://wittonislamiccentre.org.uk"}
+file: http://wittonislamiccentre.org.uk/prayer-timetable-nov-dec-2026.pdf  label: Full Timetable Download
+--- pdf text ---
+
+
+--- table 0 ---
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+--- table 1 ---
+ | 
+--- table 2 ---
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
+ |  |  |  |  |  | 
