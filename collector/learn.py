@@ -358,6 +358,7 @@ class Learner:
 
 WORKING_KINDS = ("table", "fields", "mawaqit", "page_ai", "file_ai")
 RELEARN_TRIES = 3
+MONTH_START_TRIES = 7   # in the first week of a month many sites have not yet put up the new month's timetable
 
 
 def worked_recently(src: dict, days: int = 7) -> bool:
@@ -369,7 +370,8 @@ def worked_recently(src: dict, days: int = 7) -> bool:
     return datetime.now(timezone.utc) - when < timedelta(days=days)
 
 
-def keep_working_recipe(prev: dict | None, recipe: dict, msg: str, recent: bool = False) -> tuple[dict, str, str]:
+def keep_working_recipe(prev: dict | None, recipe: dict, msg: str, recent: bool = False,
+                        today: date | None = None) -> tuple[dict, str, str]:
     """A site that had a working recipe and now shows no times is often only briefly down or mid-update.
     Don't switch it off for a month on one bad look: keep the old recipe (status 'broken', so the daily run
     still tries it and falls back to an AI read) and learn again next run. Give up after RELEARN_TRIES looks.
@@ -380,11 +382,12 @@ def keep_working_recipe(prev: dict | None, recipe: dict, msg: str, recent: bool 
     if prev.get("kind") not in WORKING_KINDS and not recent:
         return recipe, "none", msg
     tries = int(prev.get("relearn_misses") or 0) + 1
-    if tries >= RELEARN_TRIES:
+    limit = MONTH_START_TRIES if today is not None and today.day <= 7 else RELEARN_TRIES
+    if tries >= limit:
         return recipe, "none", f"{msg} (no times found {tries} runs in a row)"
     kept = {**prev, "relearn_misses": tries} if prev.get("kind") in WORKING_KINDS else {"kind": "none", "relearn_misses": tries}
     return (kept, "broken",
-            f"no times found when learning again ({tries}/{RELEARN_TRIES}), will try again next run: {msg}")
+            f"no times found when learning again ({tries}/{limit}), will try again next run: {msg}")
 
 
 TIMETABLE_FILE_RX = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
@@ -466,7 +469,7 @@ def main():
             # this site's layout keeps shifting: let AI read it whenever it changes instead
             recipe = {"kind": "page_ai", "render": bool(recipe.get("render")), "breaks": breaks}
             msg += " — layout changes often, so AI reads it when it changes"
-        recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg, worked_recently(src))
+        recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg, worked_recently(src), today)
         if status == "broken":
             store.update_source(src["id"], {"recipe": recipe, "recipe_status": "broken", "recipe_learned_at": now,
                                             "last_message": msg[:300]})

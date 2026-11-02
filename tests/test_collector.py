@@ -121,6 +121,21 @@ def test_relearn_miss_keeps_working_recipe_then_gives_up():
     assert keep_working_recipe(old, new, "ok") == (new, "ok", "ok")
 
 
+def test_relearn_miss_more_patient_in_first_week_of_month():
+    from collector.learn import keep_working_recipe
+    old = {"kind": "fields", "fields": {"fajr": {"sel": "x"}}}
+    none = {"kind": "none"}
+    r = old
+    for n in range(1, 7):
+        r, st, _ = keep_working_recipe(r, none, "no times on page", today=date(2026, 11, 2))
+        assert st == "broken" and r["relearn_misses"] == n
+    r, st, _ = keep_working_recipe(r, none, "no times on page", today=date(2026, 11, 2))
+    assert st == "none"
+    # later in the month the usual limit applies
+    r, st, _ = keep_working_recipe({**old, "relearn_misses": 2}, none, "x", today=date(2026, 11, 15))
+    assert st == "none"
+
+
 def test_relearn_miss_retried_when_source_gave_times_recently():
     from datetime import datetime, timedelta, timezone
     from collector.learn import keep_working_recipe, worked_recently
