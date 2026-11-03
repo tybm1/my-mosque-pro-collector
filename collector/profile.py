@@ -251,6 +251,70 @@ TEXT:
 
 
 MANUAL = "manual"   # jumuah_hash value for Jumu'ah times entered by hand
+TIMETABLE = "timetable"   # jumuah_hash value for Jumu'ah times taken from the Friday row of the daily timetable
+NOT_ONE_JUMUAH = re.compile(r"khutb|adh[aā]n|azaan|azan|bay[a]+n|talk|lecture|\b1st\b|\b2nd\b|first|second|sisters|ladies", re.I)
+CELL_TIME = re.compile(r"\b(\d{1,2})[:.](\d{2})\s*([ap])?\.?m?\b", re.I)
+
+
+def jumuah_from_cell(cell, separate_slots: bool = False) -> dict | None:
+    """Jumu'ah from the Friday cell of a daily timetable. Only an unambiguous cell is used: one clock time
+    (e.g. '13:15', '1:00 PM'). Several times are only used when the source lists separate Jumu'ahs
+    (Mawaqit's jumua / jumua2 / jumua3); otherwise '12:30, 13:15' could be khutbah + jamaat or two Jumu'ahs."""
+    s = str(cell or "")
+    if NOT_ONE_JUMUAH.search(s):
+        return None
+    times = CELL_TIME.findall(s)
+    if not times or (len(times) > 1 and not separate_slots):
+        return None
+    slots = []
+    for i, (h, mi, ap) in enumerate(times[:4]):
+        h = int(h)
+        if ap.lower() == "p" and h < 12:
+            h += 12
+        name = "Jumu'ah" if len(times) == 1 else ("1st", "2nd", "3rd", "4th")[i] + " Jumu'ah"
+        slots.append({"name": name, "khutbah": None, "jamaat": f"{h}:{mi}"})
+    j = clean_jumuah({"slots": slots})
+    return j if j and len(j["slots"]) == len(slots) else None    # one implausible time: use none of them
+
+
+def fill_from_timetables(store, today) -> list[str]:
+    """Mosques whose daily timetable gives Jumu'ah on Fridays, but whose website profile gave none:
+    use the timetable's Friday time. Never touches times entered by hand or read from the website."""
+    frm, to = (today - timedelta(days=13)).isoformat(), (today + timedelta(days=7)).isoformat()
+    latest, start = {}, 0
+    while True:
+        page = store._req("GET", f"jamaat_times?select=mosque_id,day,jumuah,source_id,source_url&jumuah=not.is.null"
+                                 f"&day=gte.{frm}&day=lte.{to}&order=day.desc", headers={"Range": f"{start}-{start + 999}"})
+        for r in page:
+            latest.setdefault(r["mosque_id"], r)          # newest Friday first
+        if len(page) < 1000:
+            break
+        start += 1000
+    ids = list(latest)
+    log, now = [], datetime.now(timezone.utc).isoformat()
+    for i in range(0, len(ids), 150):
+        chunk = ",".join(map(str, ids[i:i + 150]))
+        mosques = store._req("GET", f"mosques?select=id,name,jumuah,jumuah_hash,profile_at&active=is.true&id=in.({chunk})"
+                                    f"&or=(jumuah.is.null,jumuah_hash.eq.{TIMETABLE})")
+        sids = ",".join(sorted({str(latest[m["id"]]["source_id"]) for m in mosques if latest[m["id"]].get("source_id")}))
+        kinds = {s["id"]: (s.get("recipe") or {}).get("kind")
+                 for s in (store._req("GET", f"sources?select=id,recipe&id=in.({sids})") if sids else [])}
+        for m in mosques:
+            r = latest[m["id"]]
+            j = jumuah_from_cell(r["jumuah"], separate_slots=kinds.get(r.get("source_id")) == "mawaqit")
+            if not j:
+                continue
+            old = m.get("jumuah") or {}
+            if old.get("slots") == j["slots"]:
+                continue
+            src = urlparse(r.get("source_url") or "").netloc.lower().removeprefix("www.") or None
+            f = {"jumuah": {**j, "src": src, "url": r.get("source_url"), "at": today.isoformat()},
+                 "jumuah_hash": TIMETABLE, "jumuah_checked_at": now}
+            if not m.get("profile_at"):
+                f["profile_at"] = now        # the app loads Jumu'ah only for mosques with a profile
+            store._req("PATCH", f"mosques?id=eq.{m['id']}", headers={"Prefer": "return=minimal"}, json=f)
+            log.append(f"{m['name']}: Jumu'ah {', '.join(s['jamaat'] for s in j['slots'])} (from timetable, {r['day']})")
+    return log
 CLOCK_WINDOW = 14   # days after a UK clock change during which every Jumu'ah is re-read
 
 
@@ -274,7 +338,7 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     j = m["jumuah"] or {}
     url = j.get("url")
-    if not url or m.get("jumuah_hash") == MANUAL:
+    if not url or m.get("jumuah_hash") in (MANUAL, TIMETABLE):
         return {"jumuah_checked_at": now}
     change = recent_clock_change(today)
     force = bool(change and (j.get("at") or "") < change.isoformat())   # read before the clocks changed
@@ -349,6 +413,7 @@ def main():
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             log = [f.result() for f in as_completed([pool.submit(jone, m) for m in rows])]
         print(f"## Jumu'ah refresh\n\n{len(rows)} checked · AI calls: {reader.calls}\n\n" + "\n".join(f"- {l}" for l in sorted(log)))
+        report_timetable_fill(store, today)
         return
     mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,profile_at,jumuah_hash,sisters_web,sources(url,recipe)"
                                 "&active=is.true&website=not.is.null&profile_checked_at=is.null"
@@ -372,6 +437,8 @@ def main():
             for k in ("jumuah", "facilities"):
                 if f.get(k) is None:
                     f.pop(k, None)
+        if f.get("jumuah") and m.get("jumuah_hash") == TIMETABLE:
+            f["jumuah_hash"] = None                 # the website's own Jumu'ah page now gives the times
         if m.get("jumuah_hash") == MANUAL:          # times given to us by hand: never overwrite them
             f.pop("jumuah", None)
             if m.get("sisters_web"):
@@ -397,6 +464,20 @@ def main():
             log.append(line)
     summary = (f"## Mosque profiles (Jumu'ah, sisters, facilities)\n\n" + " · ".join(f"{k}: {v}" for k, v in counts.items())
                + f" · AI calls: {reader.calls}\n\n" + "\n".join(f"- {l}" for l in sorted(log)[:600]))
+    print(summary)
+    import os
+    if os.environ.get("GITHUB_STEP_SUMMARY"):
+        with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
+            fh.write(summary + "\n")
+    report_timetable_fill(store, today)
+
+
+def report_timetable_fill(store, today):
+    try:
+        log = fill_from_timetables(store, today)
+    except Exception as e:                       # never let this extra step fail the run
+        log = [f"failed: {str(e)[:200]}"]
+    summary = f"## Jumu'ah from daily timetables\n\n{len(log)} updated\n\n" + "\n".join(f"- {l}" for l in sorted(log))
     print(summary)
     import os
     if os.environ.get("GITHUB_STEP_SUMMARY"):

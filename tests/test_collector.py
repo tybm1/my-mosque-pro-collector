@@ -162,3 +162,22 @@ def test_jumuah_only_friday_does_not_sink_todays_page_read():
     # A day with even one time is still counted (and still fails if it is wrong).
     assert "2026-10-25" in drop_empty_days({"2026-10-25": {"isha": "8:00"}})
     assert drop_empty_days({"2026-10-30": {"fajr": "--", "isha": "", "jumuah": "1:30"}}) == {}
+
+
+def test_jumuah_from_timetable_cell():
+    from collector.profile import jumuah_from_cell
+    slot = lambda t: jumuah_from_cell(t)["slots"][0]["jamaat"]
+    assert slot("13:15") == "13:15"
+    assert slot("1:00 PM") == "13:00" and slot("1:30pm") == "13:30" and slot("1:00") == "13:00"
+    assert slot("Time: 12:30 PM") == "12:30" and slot("12:00pm (Brothers only)") == "12:00"
+    # ambiguous cells are not used: two times could be khutbah + jamaat or two Jumu'ahs
+    assert jumuah_from_cell("12:30, 13:15") is None
+    assert jumuah_from_cell("Bayaan 12:40, Azaan 13:00, Khutbah 13:10") is None
+    assert jumuah_from_cell("1st 1:30 -  2nd 2:10") is None
+    assert jumuah_from_cell("Iqamah: 1:30 PM & 2:30 PM") is None
+    assert jumuah_from_cell("") is None and jumuah_from_cell(None) is None
+    assert jumuah_from_cell("09:30") is None and jumuah_from_cell("16:45") is None
+    # Mawaqit lists separate Jumu'ahs
+    j = jumuah_from_cell("12:45, 01:30", separate_slots=True)
+    assert [s["jamaat"] for s in j["slots"]] == ["12:45", "13:30"] and j["slots"][0]["name"] == "1st Jumu'ah"
+    assert jumuah_from_cell("12:30, 17:00", separate_slots=True) is None
