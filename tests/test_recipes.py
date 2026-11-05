@@ -456,3 +456,24 @@ def test_learn_reads_a_timetable_picture_posted_on_the_prayer_page(monkeypatch):
     nxt = page.replace(b"2026/10/WhatsApp-Image-2026-10-02-at-09.37.34", b"2026/11/WhatsApp-Image-2026-11-01-at-10.02.11")
     hit = pick_file_link(soup_of(nxt), "https://m.org/prayer-timings/", recipe["words"], TODAY.replace(month=11))
     assert hit and "2026-11-01" in hit[0]
+
+
+def test_profile_reads_jumuah_from_masjidbox_screen_and_moved_site(monkeypatch):
+    from collector import profile
+    home = (b"<html><body><h1>Test Masjid</h1><p>Welcome to our new website, all are welcome at the masjid.</p>"
+            b"<a href='https://masjidbox.com/prayer-times/test'>Prayer times</a>" + b"<p>about us</p>" * 60 + b"</body></html>")
+    screen = (b"<html><body><div>Fajr</div><div>5</div><div>22</div><div>Iqamah</div><div>5</div><div>45</div>"
+              b"<div>Dhuhr</div><div>11</div><div>44</div><div>Asr</div><div>13</div><div>52</div>"
+              b"<div>Maghrib</div><div>16</div><div>20</div><div>Isha</div><div>17</div><div>51</div>"
+              b"<div>Jumuah</div><div>12</div><div>30</div></body></html>")
+    pages = {"https://old-m.org/": home, "https://masjidbox.com/prayer-times/test": screen}
+
+    def get(url):
+        if url == "https://old-m.org/":
+            fetch.final_url[url] = "https://new-m.org/"
+        return pages[url], "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])
+    got, combined, media = profile.site_pages(LONDON, "https://old-m.org/")
+    assert any(u == "https://masjidbox.com/prayer-times/test" for u, _ in got)
+    assert "12:30" in combined

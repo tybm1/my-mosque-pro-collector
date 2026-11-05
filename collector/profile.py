@@ -25,6 +25,7 @@ from urllib.parse import urljoin, urlparse
 from . import config, fetch
 from .extract import Reader, page_text, where
 from .recipes import soup_of
+from .learn import screen_host
 
 PROFILE_WORDS = re.compile(r"jum[u']?'?[a]?h?|jumm?ah|jumu|friday|khutb|sister|women|ladies|female|facilit|wudu|wudhu|"
                            r"ablution|parking|wheelchair|disab|access|about|visit|contact", re.I)
@@ -134,6 +135,11 @@ def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first
             continue
         except fetch.FetchError:
             continue
+        if url == start:
+            moved = fetch.final_url.get(url, url)       # site moved to a new address: its links are its own
+            if moved != url:
+                site = urlparse(moved).netloc.lower().removeprefix("www.")
+                url = moved
         if "html" not in ctype:
             continue
         text, _ = page_text(body, url)
@@ -160,6 +166,9 @@ def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first
             scored = []
             for a in soup_of(body).find_all("a", href=True):
                 href = urljoin(url, a["href"]).split("#")[0]
+                if screen_host(href):                    # MasjidBox / MyMasjid screen: shows Jumu'ah too
+                    scored.append((4, href))
+                    continue
                 if NOT_PAGES.search(href) or urlparse(href).netloc.lower().removeprefix("www.") != site:
                     continue
                 hay = a.get_text(" ", strip=True) + " " + urlparse(href).path
@@ -168,6 +177,10 @@ def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first
                         (1 if re.search(r"about|visit|contact|prayer|service|amenit|our-mosque|centre", hay, re.I) else 0)
                 if score:
                     scored.append((score, href))
+            for tag in soup_of(body).find_all("iframe", src=True):
+                src = urljoin(url, tag["src"])
+                if screen_host(src):
+                    scored.append((5, src))
             for _, h in sorted(scored, key=lambda x: -x[0]):
                 if h not in queue and h not in seen:
                     queue.append(h)
