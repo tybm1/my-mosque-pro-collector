@@ -59,7 +59,8 @@ Reply with ONLY one JSON object, one of:
 3. The jamaat times are not on this page but one of its links (L…) is the timetable:
 {{"kind": "follow", "link": "L3"}}
 
-4. This page has jamaat times but in a layout that can't be mapped as above:
+4. This page has jamaat times but in a layout that can't be mapped as above — including a page with one
+   table per month (a whole year), or column headings that don't line up with the cells:
 {{"kind": "page_ai"}}
 
 5. No jamaat times here (only start times, or no times at all):
@@ -74,6 +75,9 @@ OUTLINE:
 
 # ──────────────────────────── outlines ────────────────────────────
 
+MONTH_HEADING = re.compile(r"^\s*(january|february|march|april|may|june|july|august|september|october|november|december)"
+                           r"(\s+\d{4})?\s*$", re.I)
+
 def html_outline(html: bytes, base: str) -> tuple[str, dict]:
     soup = soup_of(html)
     refs, lines = {}, []
@@ -83,7 +87,9 @@ def html_outline(html: bytes, base: str) -> tuple[str, dict]:
         if not rows or not any(times_in(" ".join(r)) for r in rows):
             continue
         refs[f"T{i}"] = ("table", i)
-        lines.append(f"[T{i}] table, {len(rows)} rows x {max(len(r) for r in rows)} cols")
+        head = t.find_previous(string=MONTH_HEADING)
+        under = f' under heading "{head.strip()[:30]}"' if head else ""
+        lines.append(f"[T{i}] table{under}, {len(rows)} rows x {max(len(r) for r in rows)} cols")
         show = rows[:4] + (rows[-1:] if len(rows) > 4 else [])
         for k, r in enumerate(show):
             lines.append(f"   row{'' if k < 4 else ' (last)'}: " + " | ".join(f"{c}:{x[:30]}" for c, x in enumerate(r)))
