@@ -25,7 +25,7 @@ def main():
     srcs, start = [], 0
     while True:
         page = store._req("GET", "sources?select=id,mosque_id,url,enabled,blocked_reason,recipe,url_pattern,last_status,last_message,"
-                                 "last_checked,fail_count,mosques!inner(name,town,active)&mosques.active=is.true",
+                                 "last_checked,fail_count,recipe_status,mosques!inner(name,town,active)&mosques.active=is.true",
                           headers={"Range": f"{start}-{start + 999}"})
         srcs += page
         if len(page) < 1000:
@@ -40,9 +40,37 @@ def main():
     week = (datetime.now(timezone.utc) - timedelta(days=7)).isoformat()
     lost = [s for s in srcs if (not s["enabled"] or s["blocked_reason"]) and (s.get("last_checked") or "") >= week
             and s["mosque_id"] not in have]
+    # The wider picture: every active mosque with a website, not only the ones we can already read.
+    sites, start = [], 0
+    while True:
+        page = store._req("GET", "mosques?select=id&active=is.true&website=not.is.null",
+                          headers={"Range": f"{start}-{start + 999}"})
+        sites += [r["id"] for r in page]
+        if len(page) < 1000:
+            break
+        start += 1000
+    by_mosque = {}
+    for s in srcs:
+        by_mosque.setdefault(s["mosque_id"], []).append(s)
+    not_read = [mid for mid in sites if mid not in have and mid not in expected]
+    why = {"blocked by the site": 0, "no jamaat times found on the site": 0, "waiting to be learned": 0, "other": 0}
+    for mid in not_read:
+        ss = [x for x in by_mosque.get(mid, []) if x["enabled"]]
+        if ss and all(x["blocked_reason"] for x in ss):
+            why["blocked by the site"] += 1
+        elif any(x.get("recipe_status") is None and not x["blocked_reason"] for x in ss):
+            why["waiting to be learned"] += 1
+        elif any((x.get("recipe") or {}).get("kind") == "none" for x in ss):
+            why["no jamaat times found on the site"] += 1
+        else:
+            why["other"] += 1
+    site_have = sum(1 for mid in sites if mid in have)
     lines = [f"## Daily check — {today}",
              f"**{len(expected) - len(missing)} of {len(expected)} readable mosques have today's times ({cov:.1f}%).** "
-             f"Target: {args.min:.0f}%.", ""]
+             f"Target: {args.min:.0f}%.",
+             f"All mosques with a website: {site_have} of {len(sites)} have today's times "
+             f"({100.0 * site_have / max(1, len(sites)):.0f}%). Not read: "
+             + ", ".join(f"{v} {k}" for k, v in why.items() if v) + ".", ""]
     if missing:
         lines.append(f"### Missing today ({len(missing)})")
         for s in sorted(missing, key=lambda s: (s["mosques"]["town"], s["mosques"]["name"])):
