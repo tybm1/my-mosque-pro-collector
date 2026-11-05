@@ -215,7 +215,7 @@ class Learner:
         outline, refs = html_outline(body, url)
         if not has_times(text):
             return None, "no times on page", {}, files
-        if not any(k[0] in "TE" for k in refs):
+        if not any(k[0] == "T" for k in refs) and sum(k[0] == "E" for k in refs) < 5:
             # the text has times but no single element does (e.g. hours and minutes in separate boxes on a
             # prayer screen): nothing to map, so let AI read the text — still checked like everything else
             ans = {"kind": "page_ai"}
