@@ -465,23 +465,62 @@ def link_words(href: str, label: str) -> list[str]:
     return list(dict.fromkeys(words))[:8]
 
 
+NOT_TIMETABLE_IMG = re.compile(r"logo|icon|favicon|cropped|avatar|banner|sprite|placeholder|flag|badge|qr[-_]?code"
+                               r"|donat|qurbani|zakat|ramadan-appeal|\.svg|/emoji/|gravatar", re.I)
+
+
+def _img_src(img) -> str:
+    for attr in ("data-src", "data-lazy-src", "data-orig-file", "src"):
+        v = img.get(attr)
+        if v and not v.startswith("data:"):
+            return v
+    return ""
+
+
+def page_images(soup: BeautifulSoup, base: str) -> list[tuple[str, str]]:
+    """Pictures shown on a page that could be a posted timetable (e.g. a photo of this month's
+    timetable on the prayer-times page): (url, alt text). Logos, icons and small pictures are left out."""
+    from urllib.parse import urljoin
+    out = []
+    for img in soup.find_all("img"):
+        src = _img_src(img)
+        if not src:
+            continue
+        href = urljoin(base, src.strip())
+        alt = img.get("alt") or img.get("title") or ""
+        if NOT_TIMETABLE_IMG.search(href + " " + alt) or not re.search(r"\.(png|jpe?g|webp)", href, re.I):
+            continue
+        try:
+            w, h = int(img.get("width") or 999), int(img.get("height") or 999)
+        except ValueError:
+            w = h = 999
+        if w < 250 or h < 250:
+            continue
+        if href not in [o[0] for o in out]:
+            out.append((href, alt))
+    return out
+
+
 def pick_file_link(soup: BeautifulSoup, base: str, words: list[str], today: date) -> tuple[str, str] | None:
-    """The timetable file link on a page: matches the learned words best, prefers this month's."""
+    """The timetable file link (or posted timetable picture) on a page: matches the learned words
+    best, prefers this month's."""
     from urllib.parse import urljoin
     month_names = {calendar.month_name[today.month].lower(), calendar.month_abbr[today.month].lower()}
-    best, best_score = None, 0
-    for a in soup.find_all("a", href=True):
-        href = urljoin(base, a["href"])
-        if not TIMETABLE_FILE.search(href):
-            continue
-        label = a.get_text(" ", strip=True)
-        lw = set(link_words(href, label))
-        score = len(lw & set(words)) * 2
-        hay = (label + " " + href).lower()
-        if any(mn in hay for mn in month_names):
-            score += 3
-        if str(today.year) in hay:
-            score += 1
-        if score > best_score:
-            best, best_score = (href, label), score
-    return best if best and best_score >= 2 else None
+    links = [(urljoin(base, a["href"]), a.get_text(" ", strip=True)) for a in soup.find_all("a", href=True)]
+    links = [(h, lab) for h, lab in links if TIMETABLE_FILE.search(h)]
+    # links first (as before); a posted picture only when no linked file fits
+    for candidates in (links, page_images(soup, base)):
+        best, best_score = None, 0
+        for href, label in candidates:
+            lw = set(link_words(href, label))
+            score = len(lw & set(words)) * 2
+            hay = (label + " " + href).lower()
+            if any(mn in hay for mn in month_names):
+                score += 3
+            if str(today.year) in hay:
+                score += 1
+            if score > best_score:
+                best, best_score = (href, label), score
+        if best and best_score >= 2:
+            return best
+    return None

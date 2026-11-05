@@ -27,7 +27,7 @@ from . import config, fetch
 from .extract import TIMETABLE_WORDS, Reader, has_times, media_type_for, page_text, where
 from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, apply_mawaqit, apply_table_html,
                       apply_table_pdf, context_of, css_path, link_words, mawaqit_slug, pdf_tables, signature,
-                      soup_of, table_rows, times_in)
+                      page_images, soup_of, table_rows, times_in)
 from .validate import check_timetable, to_minutes
 
 MAX_PAGES_PER_SITE = 9
@@ -206,6 +206,12 @@ class Learner:
             if r:
                 return r, msg, days, []
         text, files = page_text(body, url)
+        if PAGE_WORDS.search(urlparse(url).path) or re.search(r"timetable|prayer times|salah times|jama'?at times", text[:3000], re.I):
+            # a timetable often appears as a picture on the prayer-times page rather than as a link
+            imgs = [h for h, alt in page_images(soup_of(body), url)]
+            imgs.sort(key=lambda h: (not re.search(r"time|table|salah|prayer|namaz|jama", h, re.I),
+                                     not re.search(rf"{self.today.year}|{self.today.strftime('%b')}", h, re.I)))
+            files = list(dict.fromkeys(files + imgs[:2]))
         outline, refs = html_outline(body, url)
         if not has_times(text):
             return None, "no times on page", {}, files
@@ -360,7 +366,7 @@ class Learner:
             notes.append(f"{urlparse(url).path or '/'}: {msg}")
             # timetable files linked from this page
             for href in more:
-                if TIMETABLE_FILE_RX.search(href):
+                if TIMETABLE_FILE_RX.search(href) or re.search(r"\.(png|jpe?g|webp)", href, re.I):
                     label = next((a.get_text(" ", strip=True) for a in soup_of(body).find_all("a", href=True)
                                   if urljoin(url, a["href"]) == href), "")
                     recipe, msg2, days = self.try_file(m, url, href, label)

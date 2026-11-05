@@ -432,3 +432,27 @@ def test_learn_follows_a_timetable_service_the_mosque_links_to(monkeypatch):
     assert links[0] == "https://time.my-masjid.com/timingscreen/abc" and "https://masjidbox.com/prayer-times/test" in links
     recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
     assert recipe["kind"] == "table" and url == "https://masjidbox.com/prayer-times/test"
+
+
+def test_learn_reads_a_timetable_picture_posted_on_the_prayer_page(monkeypatch):
+    """Prayer page shows this month's timetable as a photo (no link to click)."""
+    page = (b"<html><body><h1>Prayer Timings</h1><img src='/wp-content/uploads/logo.png' width='600' height='600'>"
+            b"<img src='/wp-content/uploads/2026/10/WhatsApp-Image-2026-10-02-at-09.37.34.jpeg' width='900' height='1200'>"
+            + b"x" * 400 + b"</body></html>")
+    pages = {"https://m.org/": HOME.replace(b"/prayer-times", b"/prayer-timings/"), "https://m.org/prayer-timings/": page,
+             "https://m.org/wp-content/uploads/2026/10/WhatsApp-Image-2026-10-02-at-09.37.34.jpeg": b"\xff\xd8jpeg"}
+
+    def get(url):
+        if url not in pages:
+            raise fetch.FetchError("HTTP 404")
+        return pages[url], ("image/jpeg" if url.endswith("jpeg") else "text/html"), "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])
+    recipe, msg, days, url = learn.Learner(FakeReader({"kind": "none"}, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "file_ai" and recipe["link_from"] == "https://m.org/prayer-timings/"
+    assert days["2026-10-16"]["isha"] == "19:45"
+    # next month the daily run finds the new picture on the same page
+    from collector.recipes import pick_file_link, soup_of
+    nxt = page.replace(b"2026/10/WhatsApp-Image-2026-10-02-at-09.37.34", b"2026/11/WhatsApp-Image-2026-11-01-at-10.02.11")
+    hit = pick_file_link(soup_of(nxt), "https://m.org/prayer-timings/", recipe["words"], TODAY.replace(month=11))
+    assert hit and "2026-11-01" in hit[0]
