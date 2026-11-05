@@ -181,3 +181,22 @@ def test_jumuah_from_timetable_cell():
     j = jumuah_from_cell("12:45, 01:30", separate_slots=True)
     assert [s["jamaat"] for s in j["slots"]] == ["12:45", "13:30"] and j["slots"][0]["name"] == "1st Jumu'ah"
     assert jumuah_from_cell("12:30, 17:00", separate_slots=True) is None
+
+
+def test_year_long_timetable_is_cut_to_this_month():
+    from datetime import date
+    from collector.extract import focus_month
+    months = ["January", "February", "March", "April", "May", "June", "July", "August", "September",
+              "October", "November", "December"]
+    tabs = "\n".join(months) + "\n"
+    body = "".join(f"{m}\nDay | Fajr | Zuhr\n" + "".join(f"{d} | 06:{d:02d} AM | 07:00 AM | 12:10 PM | 01:00 PM | 02:15 PM | 02:45 PM\n" for d in range(1, 31))
+                   for m in months)
+    text = "Prayer Timetable – Test Masjid\n" + tabs + body
+    out = focus_month(text, date(2026, 11, 5))
+    assert "November\nDay" in out and "October\nDay" not in out and "December\nDay" not in out
+    assert "Test Masjid" in out
+    late = focus_month(text, date(2026, 11, 26))
+    assert "November\nDay" in late and "December\nDay" in late
+    assert focus_month("short page Fajr 05:00", date(2026, 11, 5)) == "short page Fajr 05:00"
+    no_heads = "x" * 20000
+    assert focus_month(no_heads, date(2026, 11, 5)) == no_heads

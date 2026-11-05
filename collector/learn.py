@@ -327,7 +327,7 @@ class Learner:
             recipe, msg, days, more = self.try_page(m, url, body)
             if recipe:
                 return recipe, msg, days, recipe.get("url") or url
-            if msg == "no times on page" and renders < MAX_RENDERS_PER_SITE and (url == start or PAGE_WORDS.search(url)):
+            if msg == "no times on page" and renders < MAX_RENDERS_PER_SITE and (url == start or PAGE_WORDS.search(url) or screen_host(url)):
                 # Many mosque sites fill in the times with JavaScript: open the page in a browser and look again.
                 renders += 1
                 try:
@@ -410,11 +410,31 @@ def keep_working_recipe(prev: dict | None, recipe: dict, msg: str, recent: bool 
 TIMETABLE_FILE_RX = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 
 
+# Timetable services many mosques use instead of putting times on their own site. A link or embedded
+# frame pointing at one of these is the mosque's own live timetable, so it is followed even though
+# it is on another website. (Mawaqit is handled separately.)
+SCREEN_HOSTS = ("masjidbox.com", "mymasjid.uk", "my-masjid.com", "masjidal.com")
+
+
+def screen_host(url: str) -> bool:
+    host = urlparse(url).netloc.lower()
+    return any(host == h or host.endswith("." + h) for h in SCREEN_HOSTS)
+
+
 def candidate_pages(body: bytes, base: str, site: str) -> list[str]:
     soup = soup_of(body)
     scored = []
+    for tag in soup.find_all("iframe", src=True):
+        src = urljoin(base, tag["src"])
+        if screen_host(src):
+            scored.append((10, src))
     for a in soup.find_all("a", href=True):
         href = urljoin(base, a["href"]).split("#")[0]
+        if not href.startswith("http"):
+            continue
+        if screen_host(href):
+            scored.append((9, href))
+            continue
         if NOT_PAGES.search(href) or TIMETABLE_FILE_RX.search(href):
             continue
         if urlparse(href).netloc.lower().removeprefix("www.") != site:

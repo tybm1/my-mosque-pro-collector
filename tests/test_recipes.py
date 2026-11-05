@@ -414,3 +414,21 @@ def test_refused_robots_txt_is_not_a_no(monkeypatch):
     assert fetch.allowed("https://a.org/prayer-times")
     assert not fetch.allowed("https://b.org/prayer-times")
     assert fetch.allowed("https://c.org/prayer-times")
+
+
+def test_learn_follows_a_timetable_service_the_mosque_links_to(monkeypatch):
+    """Mosques often publish times on MasjidBox / MyMasjid instead of their own site."""
+    home = b"<html><body><h1>Test Masjid</h1><a href='https://masjidbox.com/prayer-times/test'>Prayer times</a>" \
+           b"<iframe src='https://time.my-masjid.com/timingscreen/abc'></iframe>" + b"x" * 400 + b"</body></html>"
+    pages = {"https://m.org/": home, "https://masjidbox.com/prayer-times/test": TABLE}
+
+    def get(url):
+        if url not in pages:
+            raise fetch.FetchError("HTTP 404")
+        return pages[url], "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])
+    links = learn.candidate_pages(home, "https://m.org/", "m.org")
+    assert links[0] == "https://time.my-masjid.com/timingscreen/abc" and "https://masjidbox.com/prayer-times/test" in links
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "table" and url == "https://masjidbox.com/prayer-times/test"

@@ -73,6 +73,38 @@ def has_times(text: str) -> bool:
     return len(re.findall(r"\b\d{1,2}[:.]\d{2}\b", text)) >= 5
 
 
+MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september",
+          "october", "november", "december")
+_MONTH_LINE = re.compile(r"^\s*(" + "|".join(MONTHS) + r")(\s+\d{4})?\s*$", re.I | re.M)
+_CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}\b")
+
+
+def focus_month(text: str, today: date) -> str:
+    """Pages that print a whole year (twelve tables, each under a month-name heading) are cut down to
+    this month's table (plus next month's near the month end), so the reader doesn't run out of room or
+    mix the months up. Text without such headings, or where this month's table can't be found, is left as is."""
+    if len(text) < 15000:
+        return text
+    heads = list(_MONTH_LINE.finditer(text))
+    if len(heads) < 4:
+        return text
+    sections = []                                   # (month index, start, end, clock times)
+    for i, h in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(text)
+        sections.append((MONTHS.index(h.group(1).lower()), h.start(), end, len(_CLOCK.findall(text, h.start(), end))))
+    want = [today.month - 1] + ([today.month % 12] if today.day >= 24 else [])
+    keep = {}
+    for mi in want:
+        best = max((s for s in sections if s[0] == mi), key=lambda s: s[3], default=None)
+        if best and best[3] >= 40:                  # a real month table (≈28+ rows), not a tab label
+            keep[mi] = text[best[1]:best[2]]
+    if (today.month - 1) not in keep:
+        return text
+    keep = list(keep.values())
+    top = text[:min(2000, heads[0].start())]          # page title / mosque name / column notes
+    return top + "\n…\n" + "\n…\n".join(keep)
+
+
 class Reader:
     """Wraps the Claude API; counts calls so a run can't overspend."""
 
@@ -110,7 +142,7 @@ class Reader:
                 content.append({"type": "image", "source": {"type": "base64", "media_type": media_type, "data": b64}})
             content.append({"type": "text", "text": prompt})
         else:
-            content.append({"type": "text", "text": prompt + "\n\nPAGE TEXT:\n" + (text or "")})
+            content.append({"type": "text", "text": prompt + "\n\nPAGE TEXT:\n" + focus_month(text or "", today)})
         msg = self.client.messages.create(
             model=config.CLAUDE_MODEL, max_tokens=8000,
             messages=[{"role": "user", "content": content}],
