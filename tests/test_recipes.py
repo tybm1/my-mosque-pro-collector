@@ -366,3 +366,51 @@ def test_realign_leaves_compact_tables_alone():
     days = recipes.rows_to_days(rows, spec, (2026, 10), date(2026, 10, 5))
     assert days["2026-10-07"]["fajr"] is None
     assert days["2026-10-07"]["dhuhr"] == "1:00"
+
+
+# ─────────── finding the timetable on more websites ───────────
+
+def test_learn_follows_a_site_that_moved_to_a_new_address(monkeypatch):
+    """Old domain redirects to a new one: links on the new domain are the mosque's own pages."""
+    home = HOME.replace(b'href="/prayer-times"', b'href="https://new-m.org/prayer-times"')
+    pages = {"https://old-m.org/": home, "https://new-m.org/prayer-times": TABLE}
+
+    def get(url):
+        if url not in pages:
+            raise fetch.FetchError("HTTP 404")
+        if url == "https://old-m.org/":
+            fetch.final_url[url] = "https://new-m.org/"
+        return pages[url], "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://old-m.org/")
+    assert recipe["kind"] == "table" and url == "https://new-m.org/prayer-times"
+
+
+def test_learn_tries_the_usual_prayer_times_address_when_menu_has_no_link(monkeypatch):
+    home = b"<html><body><h1>Test Masjid</h1><a href='/about'>About</a>" + b"x" * 400 + b"</body></html>"
+    pages = {"https://m.org/": home, "https://m.org/prayer-timetable/": TABLE}
+
+    def get(url):
+        if url not in pages:
+            raise fetch.FetchError("HTTP 404")
+        return pages[url], "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: get(url)[0])
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["kind"] == "table" and url == "https://m.org/prayer-timetable/"
+    assert "404" not in msg
+
+
+def test_refused_robots_txt_is_not_a_no(monkeypatch):
+    """RFC 9309: a robots.txt that answers 403/404 has no rules; only a real Disallow blocks us."""
+    class R:
+        def __init__(self, code, text=""):
+            self.status_code, self.text = code, text
+    answers = {"https://a.org/robots.txt": R(403), "https://b.org/robots.txt": R(200, "User-agent: *\nDisallow: /"),
+               "https://c.org/robots.txt": R(200, "User-agent: *\nDisallow:\n")}
+    monkeypatch.setattr(fetch._session, "get", lambda url, **kw: answers[url])
+    fetch._robots.clear()
+    assert fetch.allowed("https://a.org/prayer-times")
+    assert not fetch.allowed("https://b.org/prayer-times")
+    assert fetch.allowed("https://c.org/prayer-times")

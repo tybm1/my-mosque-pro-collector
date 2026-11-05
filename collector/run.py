@@ -206,7 +206,7 @@ def process(src: dict, today: date, reader: Reader, store: Store, stats: dict) -
     except fetch.Blocked as e:
         store.update_source(src["id"], {"last_checked": now, "last_status": "blocked", "blocked_reason": str(e)})
         stats["failed"] += 1
-        return f"{m['name']}: BLOCKED — {e} (will not be fetched again)"
+        return f"{m['name']}: BLOCKED — {e} (asked again in a week)"
     except Exception as e:                # one bad source never stops the run
         fails = src["fail_count"] + 1
         fields = {"last_checked": now, "last_status": "error", "last_message": str(e)[:300], "fail_count": fails}

@@ -30,7 +30,8 @@ from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, appl
                       soup_of, table_rows, times_in)
 from .validate import check_timetable, to_minutes
 
-MAX_PAGES_PER_SITE = 6
+MAX_PAGES_PER_SITE = 9
+GUESS_PATHS = ("/prayer-times/", "/prayer-timetable/", "/timetable/", "/salah-times/", "/prayer-time/")  # usual places when the menu hides the link
 MAX_RENDERS_PER_SITE = 3        # pages opened in a real browser when plain download shows no times
 PAGE_WORDS = re.compile(r"prayer|salah|salat|namaz|jama'?a?h?t|iqam|timetable|time-table|times", re.I)
 NOT_PAGES = re.compile(r"donat|zakat|login|account|cart|shop|wp-admin|facebook|twitter|instagram|whatsapp|mailto:|tel:|#", re.I)
@@ -288,7 +289,7 @@ class Learner:
     def learn(self, m: dict, start: str) -> tuple[dict, str, dict, str]:
         """Returns (recipe, message, clean_days, timetable_url)."""
         site = urlparse(start).netloc.lower().removeprefix("www.")
-        queue, seen, notes = [start], set(), []
+        queue, seen, notes, guesses = [start], set(), [], set()
         pages = renders = 0
         while queue and pages < MAX_PAGES_PER_SITE:
             url = queue.pop(0)
@@ -303,9 +304,18 @@ class Learner:
                 notes.append(f"{url}: blocked")
                 continue
             except fetch.FetchError as e:
-                notes.append(f"{url}: {e}")
+                if url not in guesses:
+                    notes.append(f"{url}: {e}")
                 continue
             pages += 1
+            if url == start:
+                # the site may have moved (e.g. old domain → new domain): follow it, so links on the new
+                # address count as the mosque's own pages
+                moved = fetch.final_url.get(url, url)
+                if moved != url:
+                    site = urlparse(moved).netloc.lower().removeprefix("www.")
+                    url = moved
+                    seen.add(url)
             if media_type_for(url, ctype):
                 recipe, msg, days = self.try_file(m, None, url, "")
                 if recipe:
@@ -353,6 +363,13 @@ class Learner:
                 for link in candidate_pages(body, url, site):
                     if link not in seen and link not in queue:
                         queue.append(link)
+            if pages == 1:
+                root = f"{urlparse(url).scheme}://{urlparse(url).netloc}"
+                for path in GUESS_PATHS:
+                    g = root + path
+                    if g not in seen and g not in queue and g.rstrip("/") not in queue:
+                        guesses.add(g)
+                        queue.append(g)
         return {"kind": "none"}, "; ".join(notes[-4:])[:300] or "no timetable found", {}, start
 
 
@@ -416,9 +433,14 @@ def candidate_pages(body: bytes, base: str, site: str) -> list[str]:
 
 def due(store, limit: int) -> list[dict]:
     month_ago = (datetime.now(timezone.utc) - timedelta(days=30)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    # A site that refused us is asked again once a week: refusals are often a passing firewall or
+    # robots.txt glitch. A robots.txt that really says no is still obeyed every time.
+    week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
     rows = store._req("GET", "sources?select=*,mosques!inner(id,name,address,town,postcode,lat,lng,website)"
-                             "&enabled=is.true&blocked_reason=is.null&mosques.active=is.true"
-                             f"&or=(recipe_status.is.null,recipe_status.eq.broken,and(recipe_status.eq.none,recipe_learned_at.lt.{month_ago}))"
+                             "&enabled=is.true&mosques.active=is.true"
+                             f"&or=(and(blocked_reason.is.null,or(recipe_status.is.null,recipe_status.eq.broken,"
+                             f"and(recipe_status.eq.none,recipe_learned_at.lt.{month_ago}))),"
+                             f"and(blocked_reason.not.is.null,last_checked.lt.{week_ago}))"
                              "&order=priority.desc,recipe_status.asc.nullsfirst,id", headers={"Range": f"0-{limit - 1}"})
     return rows
 
@@ -472,10 +494,10 @@ def main():
         recipe, status, msg = keep_working_recipe(src.get("recipe"), recipe, msg, worked_recently(src), today)
         if status == "broken":
             store.update_source(src["id"], {"recipe": recipe, "recipe_status": "broken", "recipe_learned_at": now,
-                                            "last_message": msg[:300]})
+                                            "last_message": msg[:300], "blocked_reason": None})
             return "retry", f"{m['name']}: kept old recipe — {msg}"
         fields = {"recipe": recipe, "recipe_status": status, "recipe_learned_at": now, "last_message": msg[:300],
-                  "last_hash": None}
+                  "last_hash": None, "blocked_reason": None}
         if tt_url != src["url"]:
             fields["url"] = tt_url
         try:

@@ -11,7 +11,7 @@ from . import config
 
 
 class Blocked(Exception):
-    """The site forbids automated access (robots.txt) — never fetch it."""
+    """The site forbids automated access (robots.txt or a refusal) — not fetched again until the weekly recheck."""
 
 
 class FetchError(Exception):
@@ -22,6 +22,7 @@ _session = requests.Session()
 _session.headers.update({"User-Agent": config.USER_AGENT, "Accept-Language": "en-GB,en;q=0.8"})
 _robots: dict[str, urllib.robotparser.RobotFileParser | None] = {}
 _last_hit: dict[str, float] = {}
+final_url: dict[str, str] = {}    # url asked for → address it ended up at after redirects (site moved)
 _lock = threading.Lock()          # the collector checks several websites at once
 
 
@@ -32,10 +33,12 @@ def _robots_for(url: str):
         rp = urllib.robotparser.RobotFileParser()
         try:
             r = _session.get(root + "/robots.txt", timeout=config.REQUEST_TIMEOUT)
-            if r.status_code in (401, 403):
-                rp.disallow_all = True           # access to robots.txt itself refused: treat as "no"
+            if r.status_code >= 500:
+                rp = None                        # server trouble: decide per request (never a lasting "no")
             elif r.status_code >= 400:
-                rp.allow_all = True              # no robots.txt: allowed
+                # RFC 9309 §2.3.1.3: robots.txt missing or unavailable (any 4xx) means no rules apply.
+                # Only a robots.txt that actually disallows us counts as the site saying "no".
+                rp.allow_all = True
             else:
                 rp.parse(r.text.splitlines())
         except requests.RequestException:
@@ -71,6 +74,7 @@ def get(url: str) -> tuple[bytes, str, str]:
         r = _session.get(url, timeout=config.REQUEST_TIMEOUT, stream=True)
     except requests.RequestException as e:
         raise FetchError(str(e)[:200])
+    final_url[url] = r.url or url
     if r.status_code in (401, 403, 451):
         raise Blocked(f"site refused access (HTTP {r.status_code})")
     if r.status_code >= 400:
