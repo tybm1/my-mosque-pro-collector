@@ -45,6 +45,18 @@ def where(m: dict) -> str:
     return ", ".join(x for x in parts if x) + (" " + m["postcode"] if m.get("postcode") else "")
 
 
+_SPLIT_CLOCK = re.compile(r"(?m)^(\d{1,2})\n([0-5]\d)$")
+
+
+def join_split_clocks(text: str) -> str:
+    """Prayer screens (e.g. MasjidBox) print hours and minutes in separate boxes, so the text reads
+    'Fajr\n5\n22\nIqamah\n5\n45'. Put them back together as 5:22 / 5:45 — only on pages that clearly
+    do this (several such pairs), so ordinary numbers elsewhere are never turned into times."""
+    if len(_SPLIT_CLOCK.findall(text)) < 5:
+        return text
+    return _SPLIT_CLOCK.sub(r"\1:\2", text)
+
+
 def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
     """Visible text of an HTML page (tables kept as rows) and links to timetable files."""
     soup = BeautifulSoup(html, "html.parser")
@@ -54,6 +66,7 @@ def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
         cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
         tr.replace_with(soup.new_string(" | ".join(cells) + "\n"))
     text = re.sub(r"\n\s*\n+", "\n", soup.get_text("\n", strip=True))
+    text = join_split_clocks(text)
     links = []
     for a in soup.find_all("a", href=True):
         href = urljoin(base_url, a["href"])

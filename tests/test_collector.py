@@ -200,3 +200,16 @@ def test_year_long_timetable_is_cut_to_this_month():
     assert focus_month("short page Fajr 05:00", date(2026, 11, 5)) == "short page Fajr 05:00"
     no_heads = "x" * 20000
     assert focus_month(no_heads, date(2026, 11, 5)) == no_heads
+
+
+def test_prayer_screen_with_hours_and_minutes_in_separate_boxes():
+    from collector.extract import page_text, has_times
+    boxes = "".join(f"<div>{p}</div><div>{h}</div><div>{m}</div><div>Iqamah</div><div>{ih}</div><div>{im}</div>"
+                    for p, h, m, ih, im in [("Fajr", 5, 22, 5, 45), ("Dhuhr", 11, 44, 12, 15), ("Asr", 13, 52, 14, 15),
+                                            ("Maghrib", 16, 20, 16, 25), ("Isha", 17, 51, 19, 30)])
+    html = ("<html><body><div>is in</div><div>01</div><div>Hours</div>" + boxes + "</body></html>").encode()
+    text, _ = page_text(html, "https://masjidbox.com/prayer-times/x")
+    assert "Fajr\n5:22\nIqamah\n5:45" in text and "Isha\n17:51\nIqamah\n19:30" in text and has_times(text)
+    assert "01\nHours" in text
+    # a page with one stray pair of numbers is left alone
+    assert page_text(b"<html><body><div>Room</div><div>5</div><div>22</div></body></html>", "https://m.org/")[0] == "Room\n5\n22"

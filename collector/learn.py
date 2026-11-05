@@ -209,7 +209,12 @@ class Learner:
         outline, refs = html_outline(body, url)
         if not has_times(text):
             return None, "no times on page", {}, files
-        ans = self.ask_recipe(m, outline)
+        if not any(k[0] in "TE" for k in refs):
+            # the text has times but no single element does (e.g. hours and minutes in separate boxes on a
+            # prayer screen): nothing to map, so let AI read the text — still checked like everything else
+            ans = {"kind": "page_ai"}
+        else:
+            ans = self.ask_recipe(m, outline)
         kind = ans.get("kind")
         if kind == "table":
             spec = table_recipe(ans, refs, lambda i: table_rows(soup_of(body).find_all("table")[i]))
