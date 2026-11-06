@@ -524,3 +524,28 @@ def test_friday_rows_shifted_by_extra_jumuah_cell_are_read():
     days = recipes.rows_to_days(rows, spec, (2026, 11), date(2026, 11, 1))
     assert days["2026-11-06"] == {"fajr": "6:30", "dhuhr": "1:00", "asr": "3:00", "maghrib": "4:29", "isha": "7:00"}
     assert "2026-11-13" in days and days["2026-11-05"]["maghrib"] == "4:38"
+
+
+def test_broken_gzip_is_fetched_again_uncompressed(monkeypatch):
+    import requests
+
+    class R:
+        def __init__(self, broken):
+            self.broken, self.status_code, self.url, self.headers = broken, 200, "https://m.org/", {"Content-Type": "text/html"}
+
+        def iter_content(self, n):
+            if self.broken:
+                raise requests.exceptions.ContentDecodingError("Error -3 while decompressing data")
+            yield b"<html>ok</html>"
+
+    calls = []
+
+    def fake_get(url, timeout=None, stream=None, headers=None):
+        calls.append(headers)
+        return R(broken=not headers)
+
+    monkeypatch.setattr(fetch, "allowed", lambda url: True)
+    monkeypatch.setattr(fetch, "_wait_turn", lambda url: None)
+    monkeypatch.setattr(fetch._session, "get", fake_get)
+    body, ctype, _ = fetch.get("https://m.org/")
+    assert body == b"<html>ok</html>" and calls == [None, {"Accept-Encoding": "identity"}]

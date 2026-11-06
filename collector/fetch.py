@@ -70,21 +70,32 @@ def get(url: str) -> tuple[bytes, str, str]:
     if not allowed(url):
         raise Blocked("robots.txt disallows automated access")
     _wait_turn(url)
-    try:
-        r = _session.get(url, timeout=config.REQUEST_TIMEOUT, stream=True)
-    except requests.RequestException as e:
-        raise FetchError(str(e)[:200])
-    final_url[url] = r.url or url
-    if r.status_code in (401, 403, 451):
-        raise Blocked(f"site refused access (HTTP {r.status_code})")
-    if r.status_code >= 400:
-        raise FetchError(f"HTTP {r.status_code}")
-    chunks, size = [], 0
-    for chunk in r.iter_content(64 * 1024):
-        size += len(chunk)
-        if size > config.MAX_BYTES:
-            raise FetchError("file too large")
-        chunks.append(chunk)
+    for attempt in (0, 1):
+        # attempt 1: some servers send a broken gzip body ("content-encoding: , gzip"), so ask for it uncompressed
+        headers = {"Accept-Encoding": "identity"} if attempt else None
+        try:
+            r = _session.get(url, timeout=config.REQUEST_TIMEOUT, stream=True, headers=headers)
+        except requests.RequestException as e:
+            raise FetchError(str(e)[:200])
+        final_url[url] = r.url or url
+        if r.status_code in (401, 403, 451):
+            raise Blocked(f"site refused access (HTTP {r.status_code})")
+        if r.status_code >= 400:
+            raise FetchError(f"HTTP {r.status_code}")
+        chunks, size = [], 0
+        try:
+            for chunk in r.iter_content(64 * 1024):
+                size += len(chunk)
+                if size > config.MAX_BYTES:
+                    raise FetchError("file too large")
+                chunks.append(chunk)
+        except requests.exceptions.ContentDecodingError as e:
+            if attempt:
+                raise FetchError(str(e)[:200])
+            continue
+        except requests.RequestException as e:
+            raise FetchError(str(e)[:200])
+        break
     body = b"".join(chunks)
     ctype = r.headers.get("Content-Type", "").split(";")[0].strip().lower()
     return body, ctype, hashlib.sha256(body).hexdigest()
