@@ -213,14 +213,21 @@ def _realign(rows: list[list[str]]) -> list[list[str]]:
     common, n = Counter(layouts).most_common(1)[0]
     if n < 0.6 * len(rows) or len(common) < 4:
         return rows
-    if min(b - a for a, b in zip(common, common[1:])) < 3:
+    if min(b - a for a, b in zip(common, common[1:])) < 2:
         return rows                     # only padded tables: a cell 1 column off is unambiguous
     out = []
     for r, lay in zip(rows, layouts):
-        if lay != common and len(lay) == len(common) and all(abs(a - b) <= 1 for a, b in zip(lay, common)):
-            new = [""] * max(len(r), common[-1] + 1)
-            for src, dst in zip(lay, common):
+        # Same cells, or the same cells plus extra ones after the last column (e.g. a Jumu'ah time on
+        # Fridays, which also shifts the rest of the Friday row one column right).
+        head, extra = lay[:len(common)], lay[len(common):]
+        if (lay != common and len(head) == len(common) and all(abs(a - b) <= 1 for a, b in zip(head, common))
+                and all(x > common[-1] + 1 for x in extra)):
+            shift = common[-1] - head[-1]
+            new = [""] * max(len(r) + max(shift, 0), common[-1] + 1)
+            for src, dst in zip(head, common):
                 new[dst] = r[src]
+            for x in extra:
+                new[x + shift] = r[x]
             r = new
         out.append(r)
     return out

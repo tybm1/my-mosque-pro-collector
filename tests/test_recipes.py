@@ -501,3 +501,26 @@ def test_times_with_am_pm_attached_count_as_times():
     assert has_times("Fajr 5:24am N/A Zuhr 11:48am 1:15pm Asr 2:35pm 3:00pm Maghrib 4:26pm 4:28pm")
     assert not has_times("Call 0800 123 456, 12.50p, 1.25kg, 3.5")
     assert JUM.search("Early Jummuah Next 12:15 PM") and JUM.search("Jumu’ah") and not JUM.search("jumping")
+
+
+def test_friday_rows_shifted_by_extra_jumuah_cell_are_read():
+    """Northwich: on Fridays the PDF row has an extra Jummah cell and every cell after the date sits
+    one column right, so Fridays were dropped."""
+    def row(cells):
+        r = [""] * 41
+        for i, v in cells.items():
+            r[i] = v
+        return r
+    rows = [row({0: "Date", 3: "Day", 24: "Fajr", 27: "Zohar", 30: "Asr", 33: "Maghrib", 36: "Isha"})]
+    for d in range(1, 15):
+        if d in (6, 13):
+            rows.append(row({1: str(d), 4: "Fri", 7: "5:39", 10: "7:18", 13: "11:54", 16: "2:39", 19: "4:29", 22: "6:08",
+                             25: "6:30", 28: "1:00", 31: "3:00", 34: "4:29", 37: "7:00", 40: "12:45"}))
+        else:
+            rows.append(row({1: str(d), 3: "Sun", 6: "5:30", 9: "7:09", 12: "11:54", 15: "2:48", 18: "4:38", 21: "6:16",
+                             24: "6:30", 27: "1:00", 30: "3:00", 33: "4:38", 36: "7:00"}))
+    spec = {"cols": {"fajr": {"col": 24}, "dhuhr": {"col": 27}, "asr": {"col": 30}, "maghrib": {"col": 33},
+                     "isha": {"col": 36}}, "date_col": 1, "date_style": "day_of_month", "header_rows": 1}
+    days = recipes.rows_to_days(rows, spec, (2026, 11), date(2026, 11, 1))
+    assert days["2026-11-06"] == {"fajr": "6:30", "dhuhr": "1:00", "asr": "3:00", "maghrib": "4:29", "isha": "7:00"}
+    assert "2026-11-13" in days and days["2026-11-05"]["maghrib"] == "4:38"
