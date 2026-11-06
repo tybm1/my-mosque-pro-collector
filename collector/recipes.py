@@ -501,15 +501,45 @@ def page_images(soup: BeautifulSoup, base: str) -> list[tuple[str, str]]:
     return out
 
 
+_GREG_YEAR = re.compile(r"(?<!\d)(20[0-3]\d)(?!\d)")
+_HIJRI_YEAR = re.compile(r"(?<!\d)(14[0-9]\d)(?!\d)")
+
+
+def old_file_year(href: str, today: date) -> int | None:
+    """The year of a timetable file/picture whose address shows it is from an earlier year
+    (e.g. .../uploads/2021/12/Screen-Shot-2021-12-05.png, or 'ramadaan-1442-timetable'),
+    so it can't be this year's timetable: AI reading would put this year's dates on old times.
+    A file uploaded late last year (uploads/2025/12/...) or naming this/next year is fine."""
+    from urllib.parse import unquote, urlparse
+    path = unquote(urlparse(href).path)
+    years = [int(y) for y in _GREG_YEAR.findall(path)]
+    if years and max(years) < today.year - 1:
+        return max(years)
+    if years and max(years) == today.year - 1 and today.month >= 3:
+        # last year's upload folder is fine; last year named in the file name itself is not
+        name = path.rsplit("/", 1)[-1]
+        named = [int(y) for y in _GREG_YEAR.findall(name)]
+        if named and max(named) < today.year:
+            return max(named)
+    hijri = [int(y) for y in _HIJRI_YEAR.findall(path)]
+    if hijri and not years:
+        # Hijri year now ≈ (Gregorian − 622) × 1.0307; anything 2+ years back is an old timetable
+        now_h = int((today.year - 622) * 1.0307 + (today.timetuple().tm_yday / 365.25) * 1.0307)
+        if max(hijri) < now_h - 1:
+            return max(hijri)
+    return None
+
+
 def pick_file_link(soup: BeautifulSoup, base: str, words: list[str], today: date) -> tuple[str, str] | None:
     """The timetable file link (or posted timetable picture) on a page: matches the learned words
     best, prefers this month's."""
     from urllib.parse import urljoin
     month_names = {calendar.month_name[today.month].lower(), calendar.month_abbr[today.month].lower()}
     links = [(urljoin(base, a["href"]), a.get_text(" ", strip=True)) for a in soup.find_all("a", href=True)]
-    links = [(h, lab) for h, lab in links if TIMETABLE_FILE.search(h)]
+    links = [(h, lab) for h, lab in links if TIMETABLE_FILE.search(h) and not old_file_year(h, today)]
+    pics = [(h, alt) for h, alt in page_images(soup, base) if not old_file_year(h, today)]
     # links first (as before); a posted picture only when no linked file fits
-    for candidates in (links, page_images(soup, base)):
+    for candidates in (links, pics):
         best, best_score = None, 0
         for href, label in candidates:
             lw = set(link_words(href, label))

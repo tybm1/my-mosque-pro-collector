@@ -27,7 +27,7 @@ from . import config, fetch
 from .extract import TIMETABLE_WORDS, Reader, has_times, media_type_for, page_text, where
 from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, apply_mawaqit, apply_table_html,
                       apply_table_pdf, context_of, css_path, link_words, mawaqit_slug, pdf_tables, signature,
-                      page_images, soup_of, table_rows, times_in)
+                      page_images, soup_of, table_rows, times_in, old_file_year)
 from .validate import check_timetable, to_minutes
 
 MAX_PAGES_PER_SITE = 9
@@ -270,6 +270,9 @@ class Learner:
         return {"kind": "mawaqit", "slug": slug, "url": url}, f"Mawaqit screen, {len(clean)} days", clean
 
     def try_file(self, m: dict, page_url: str | None, href: str, label: str) -> tuple[dict | None, str, dict]:
+        old = old_file_year(href, self.today)
+        if old:
+            return None, f"timetable file is from {old} (old)", {}
         try:
             data, ctype, _ = fetch.get(href)
         except (fetch.Blocked, fetch.FetchError) as e:

@@ -115,6 +115,21 @@ def test_pick_file_link_prefers_this_month():
     assert href == "https://m.org/up/Timetable-October-2026.pdf"
 
 
+def test_old_timetable_files_are_not_picked():
+    """A picture uploaded years ago (e.g. a 'December 2021' screenshot still on the page) must not be
+    read as this year's timetable."""
+    today = date(2026, 11, 6)
+    old = "https://m.org/wp-content/uploads/2021/12/Screen-Shot-2021-12-05-at-17.23.20.png"
+    assert recipes.old_file_year(old, today) == 2021
+    assert recipes.old_file_year("https://m.org/files/ramadaan-1442-timetable.pdf", today) == 1442
+    assert recipes.old_file_year("https://m.org/uploads/2025/12/Nov26-scaled.jpg", today) is None
+    assert recipes.old_file_year("https://m.org/uploads/2025/09/1/SALAH-NOVEMBER-2026.jpg", today) is None
+    assert recipes.old_file_year("https://m.org/uploads/2025/10/Timetable-Nov-2025.pdf", today) == 2025
+    assert recipes.old_file_year("https://m.org/Al-Ikhlas-November-2026.pdf", today) is None
+    html = f'<img src="{old}" width="800" height="900" alt="Screen Shot">'.encode()
+    assert pick_file_link(soup_of(html), "https://m.org/prayer-times/", ["screen", "shot"], today) is None
+
+
 # ─────────── end to end: learning a site (web and Claude replaced by stand-ins) ───────────
 
 class FakeReader:

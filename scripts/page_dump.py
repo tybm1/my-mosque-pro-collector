@@ -7,6 +7,19 @@ os.makedirs("exports/pages", exist_ok=True)
 for url in [u.strip() for u in open("scripts/dump_urls.txt") if u.strip()]:
     name = re.sub(r"[^a-z0-9]+", "_", url.lower())[:80]
     out = [f"URL: {url}"]
+    if re.search(r"\.pdf(\?|$)", url, re.I):
+        from collector.recipes import pdf_tables
+        try:
+            tables, text = pdf_tables(fetch.get(url)[0])
+            out += ["\n===== pdf text =====", text[:20000], "\n===== pdf tables ====="]
+            for i, t in enumerate(tables):
+                out.append(f"--- table {i} ---")
+                out += [" | ".join(f"{j}:{c}" for j, c in enumerate(r) if c) for r in t[:45]]
+        except Exception as e:
+            out.append(f"\n===== pdf: failed — {e} =====")
+        open(f"exports/pages/{name}.txt", "w").write("\n".join(out))
+        print(url, "saved")
+        continue
     for label, fn in (("plain", lambda: fetch.get(url)[0]), ("rendered", lambda: fetch.render(url))):
         try:
             html = fn()
