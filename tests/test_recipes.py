@@ -492,3 +492,12 @@ def test_profile_reads_jumuah_from_masjidbox_screen_and_moved_site(monkeypatch):
     got, combined, media = profile.site_pages(LONDON, "https://old-m.org/")
     assert any(u == "https://masjidbox.com/prayer-times/test" for u, _ in got)
     assert "12:30" in combined
+
+
+def test_times_with_am_pm_attached_count_as_times():
+    """'5:24am' / '12:30pm' (no space) must count: such pages were parked as 'no times on page'."""
+    from collector.extract import has_times
+    from collector.profile import JUM
+    assert has_times("Fajr 5:24am N/A Zuhr 11:48am 1:15pm Asr 2:35pm 3:00pm Maghrib 4:26pm 4:28pm")
+    assert not has_times("Call 0800 123 456, 12.50p, 1.25kg, 3.5")
+    assert JUM.search("Early Jummuah Next 12:15 PM") and JUM.search("Jumu’ah") and not JUM.search("jumping")

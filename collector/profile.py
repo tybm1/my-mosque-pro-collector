@@ -23,7 +23,7 @@ from datetime import datetime, timedelta, timezone
 from urllib.parse import urljoin, urlparse
 
 from . import config, fetch
-from .extract import Reader, page_text, where
+from .extract import CLOCK, Reader, page_text, where
 from .recipes import soup_of
 from .learn import screen_host
 
@@ -32,8 +32,8 @@ PROFILE_WORDS = re.compile(r"jum[u']?'?[a]?h?|jumm?ah|jumu|friday|khutb|sister|w
 NOT_PAGES = re.compile(r"donat|zakat|login|account|cart|shop|wp-admin|facebook|twitter|instagram|whatsapp|mailto:|tel:|"
                        r"\.(pdf|png|jpe?g|webp|zip|mp[34])(\?|$)", re.I)
 MAX_PAGES = 6
-JUM = re.compile(r"jum[u']?'?a?h|jumm?a|jumu|friday|khutb", re.I)
-HAS_TIME = re.compile(r"\b\d{1,2}[:.]\d{2}\b")
+JUM = re.compile(r"j[uo]mm?[uo]?['’‘ʿ`]?a?h?\b|jumu|friday|khutb", re.I)
+HAS_TIME = CLOCK
 MEDIA = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 
 PROMPT = """These are extracts from the website of a UK mosque: {name}, {where}.

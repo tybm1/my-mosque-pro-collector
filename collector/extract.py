@@ -82,14 +82,18 @@ def fingerprint_text(text: str) -> str:
     return hashlib.sha256(stable.encode()).hexdigest()
 
 
+# A clock time in page text: '5:24', '17.30', also with am/pm stuck on ('5:24am', '12:30pm')
+CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}(?:\b|(?=[ap]\.?m\b))", re.I)
+
+
 def has_times(text: str) -> bool:
-    return len(re.findall(r"\b\d{1,2}[:.]\d{2}\b", text)) >= 5
+    return len(_CLOCK.findall(text)) >= 5
 
 
 MONTHS = ("january", "february", "march", "april", "may", "june", "july", "august", "september",
           "october", "november", "december")
 _MONTH_LINE = re.compile(r"^\s*(" + "|".join(MONTHS) + r")(\s+\d{4})?\s*$", re.I | re.M)
-_CLOCK = re.compile(r"\b\d{1,2}[:.]\d{2}\b")
+_CLOCK = CLOCK
 
 
 def focus_month(text: str, today: date) -> str:
