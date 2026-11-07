@@ -1,0 +1,7 @@
+URL: https://micuk.uk
+
+===== plain: failed — HTTPSConnectionPool(host='micuk.uk', port=443): Max retries exceeded with url: / (Caused by ConnectTimeoutError(<HTTPSConnection(host='micuk.uk', port=443) at 0x7ba076f49eb0>, 'Connection to micuk.uk  =====
+
+===== rendered: failed — browser could not load the page (Page.goto: Timeout 30000ms exceeded.
+Call log:
+  - navigating to "https://micuk.uk/", waiting until ) =====

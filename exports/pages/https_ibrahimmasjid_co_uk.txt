@@ -1,0 +1,7 @@
+URL: https://ibrahimmasjid.co.uk
+
+===== plain: failed — HTTPSConnectionPool(host='ibrahimmasjid.co.uk', port=443): Max retries exceeded with url: / (Caused by SSLError(SSLError(1, '[SSL: TLSV1_ALERT_INTERNAL_ERROR] tlsv1 alert internal error (_ssl.c:1011)' =====
+
+===== rendered: failed — browser could not load the page (Page.goto: net::ERR_SSL_PROTOCOL_ERROR at https://ibrahimmasjid.co.uk/
+Call log:
+  - navigating to ") =====
