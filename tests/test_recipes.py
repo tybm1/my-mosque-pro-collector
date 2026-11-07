@@ -549,3 +549,10 @@ def test_broken_gzip_is_fetched_again_uncompressed(monkeypatch):
     monkeypatch.setattr(fetch._session, "get", fake_get)
     body, ctype, _ = fetch.get("https://m.org/")
     assert body == b"<html>ok</html>" and calls == [None, {"Accept-Encoding": "identity"}]
+
+
+def test_learn_starts_from_homepage_when_saved_page_is_gone(monkeypatch):
+    """Saved address is an old sub-page that now answers 404: look from the homepage instead."""
+    fake_web(monkeypatch)
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/our-centre")
+    assert recipe["kind"] == "table" and url == "https://m.org/prayer-times"

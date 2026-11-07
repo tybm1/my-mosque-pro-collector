@@ -326,6 +326,12 @@ class Learner:
             except fetch.FetchError as e:
                 if url not in guesses:
                     notes.append(f"{url}: {e}")
+                if url == start and pages == 0:
+                    # the saved page is gone (moved / renamed, e.g. HTTP 404): start again from the homepage
+                    root = f"{urlparse(url).scheme}://{urlparse(url).netloc}/"
+                    if root not in seen and root.rstrip("/") != url.rstrip("/"):
+                        start = root
+                        queue.insert(0, root)
                 continue
             pages += 1
             if url == start:
