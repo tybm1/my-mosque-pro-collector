@@ -213,3 +213,17 @@ def test_prayer_screen_with_hours_and_minutes_in_separate_boxes():
     assert "01\nHours" in text
     # a page with one stray pair of numbers is left alone
     assert page_text(b"<html><body><div>Room</div><div>5</div><div>22</div></body></html>", "https://m.org/")[0] == "Room\n5\n22"
+
+
+def test_jumuah_minutes_accepts_am_pm_suffix():
+    from collector.profile import clean_jumuah, jumuah_minutes
+    assert jumuah_minutes("13:15") == 13 * 60 + 15
+    assert jumuah_minutes("13:15pm") == 13 * 60 + 15          # 'Starts at 13:15pm' (Muslim Welfare House)
+    assert jumuah_minutes("1:15 pm") == 13 * 60 + 15
+    assert jumuah_minutes("1.30 p.m.") == 13 * 60 + 30
+    assert jumuah_minutes("12:30PM") == 12 * 60 + 30
+    assert jumuah_minutes("11:45 am") == 11 * 60 + 45
+    assert jumuah_minutes("1:15 am") is None
+    assert jumuah_minutes("6:30") is None                      # 18:30 is no Jumu'ah time
+    j = clean_jumuah({"slots": [{"name": "Friday Khutbah", "khutbah": "13:15pm", "jamaat": None}]})
+    assert j["slots"][0]["khutbah"] == "13:15"

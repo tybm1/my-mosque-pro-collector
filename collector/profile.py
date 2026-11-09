@@ -56,15 +56,20 @@ EXTRACTS:
 {text}
 """
 
-TIME = re.compile(r"^(\d{1,2}):(\d{2})$")
+TIME = re.compile(r"^(\d{1,2})[:.](\d{2})\s*(?:([ap])\.?\s*m\.?)?$", re.I)
 
 
 def jumuah_minutes(t):
+    """Minutes after midnight for a Friday time such as '13:15', '1:15', '1.15 pm' or '13:15pm'
+    (sites often write a 24-hour time with 'pm' stuck on); None if it isn't a plausible Jumu'ah time."""
     m = TIME.match(str(t or "").strip())
     if not m:
         return None
     h, mi = int(m.group(1)), int(m.group(2))
-    if h < 10:                       # '1:30' means 13:30
+    ap = (m.group(3) or "").lower()
+    if ap == "a" and h != 11:        # Jumu'ah is never in the morning, except 11:xx am
+        return None
+    if h < 10:                       # '1:30' / '1:30 pm' means 13:30
         h += 12
     v = h * 60 + mi
     return v if 11 * 60 + 30 <= v <= 15 * 60 + 30 else None
