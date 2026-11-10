@@ -152,6 +152,7 @@ class Reader:
         prompt = PROMPT.format(name=mosque["name"], where=where(mosque), today=today.isoformat())
         content = []
         if data is not None:
+            data, media_type = prepare_media(data, media_type)
             b64 = base64.standard_b64encode(data).decode()
             if media_type == "application/pdf":
                 content.append({"type": "document", "source": {"type": "base64", "media_type": media_type, "data": b64}})
@@ -181,6 +182,58 @@ def parse_reply(reply: str) -> dict:
     if not isinstance(out.get("days"), dict):
         out["days"] = {}
     return out
+
+
+class MediaError(ValueError):
+    """The file can't be sent to the AI (not really a PDF/image, or unreadable)."""
+
+
+MAX_SIDE = 7900          # the API refuses images with a side over 8000 px
+
+
+def sniff_media_type(data: bytes) -> str | None:
+    """The real type from the file's first bytes (sites often label a WebP as .jpg etc.)."""
+    head = data[:16]
+    if head.startswith(b"%PDF") or b"%PDF-" in data[:1024]:
+        return "application/pdf"
+    if head.startswith(b"\x89PNG\r\n\x1a\n"):
+        return "image/png"
+    if head.startswith(b"\xff\xd8\xff"):
+        return "image/jpeg"
+    if head.startswith((b"GIF87a", b"GIF89a")):
+        return "image/gif"
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
+def prepare_media(data: bytes, media_type: str) -> tuple[bytes, str]:
+    """Fix the label from the real bytes, turn other picture formats into PNG and shrink
+    oversized pictures, so one odd file doesn't make the whole AI request fail."""
+    real = sniff_media_type(data)
+    if real == "application/pdf":
+        start = data.find(b"%PDF")
+        return data[start:], real            # some servers put junk before the header
+    if media_type == "application/pdf" and real is None:
+        raise MediaError("timetable file is not a valid PDF")
+    try:
+        from PIL import Image
+        import io
+        img = Image.open(io.BytesIO(data))
+        img.load()
+    except Exception:
+        if real:
+            return data, real
+        raise MediaError("timetable file is not a readable picture")
+    if real and max(img.size) <= MAX_SIDE:
+        return data, real
+    if max(img.size) > MAX_SIDE:
+        img.thumbnail((MAX_SIDE, MAX_SIDE))
+    if img.mode not in ("RGB", "L", "RGBA"):
+        img = img.convert("RGBA" if "A" in img.getbands() or "transparency" in img.info else "RGB")
+    out = io.BytesIO()
+    img.save(out, "PNG", optimize=True)
+    return out.getvalue(), "image/png"
 
 
 def media_type_for(url: str, ctype: str) -> str | None:

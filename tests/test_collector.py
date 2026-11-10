@@ -227,3 +227,31 @@ def test_jumuah_minutes_accepts_am_pm_suffix():
     assert jumuah_minutes("6:30") is None                      # 18:30 is no Jumu'ah time
     j = clean_jumuah({"slots": [{"name": "Friday Khutbah", "khutbah": "13:15pm", "jamaat": None}]})
     assert j["slots"][0]["khutbah"] == "13:15"
+
+
+def test_prepare_media_fixes_wrong_labels_and_huge_pictures():
+    import io
+    import pytest
+    from PIL import Image
+    from collector.extract import MediaError, prepare_media, sniff_media_type
+
+    def pic(fmt, size=(40, 30)):
+        b = io.BytesIO()
+        Image.new("RGB", size, "white").save(b, fmt)
+        return b.getvalue()
+
+    webp = pic("WEBP")
+    assert sniff_media_type(webp) == "image/webp"
+    assert prepare_media(webp, "image/jpeg") == (webp, "image/webp")       # site labelled a WebP as .jpg
+    png = pic("PNG")
+    assert prepare_media(png, "image/webp")[1] == "image/png"
+    data, mt = prepare_media(pic("PNG", (9000, 100)), "image/png")           # over the API's 8000 px limit
+    assert mt == "image/png" and max(Image.open(io.BytesIO(data)).size) <= 8000
+    bmp = pic("BMP")
+    data, mt = prepare_media(bmp, "image/jpeg")                              # other formats become PNG
+    assert mt == "image/png" and sniff_media_type(data) == "image/png"
+    assert prepare_media(b"\n\n%PDF-1.4 rest", "application/pdf") == (b"%PDF-1.4 rest", "application/pdf")
+    with pytest.raises(MediaError):
+        prepare_media(b"<html>not found</html>", "application/pdf")
+    with pytest.raises(MediaError):
+        prepare_media(b"<html>not found</html>", "image/jpeg")

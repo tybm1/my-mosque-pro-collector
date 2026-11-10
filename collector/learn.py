@@ -24,7 +24,7 @@ from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
 
 from . import config, fetch
-from .extract import TIMETABLE_WORDS, Reader, has_times, media_type_for, page_text, where
+from .extract import TIMETABLE_WORDS, MediaError, Reader, has_times, media_type_for, page_text, where
 from .recipes import (PRAYER_KEYS, PRAYER_WORDS, RecipeError, apply_fields, apply_mawaqit, apply_table_html,
                       apply_table_pdf, context_of, css_path, link_words, mawaqit_slug, pdf_tables, signature,
                       page_images, soup_of, table_rows, times_in, old_file_year)
@@ -270,6 +270,17 @@ class Learner:
         return {"kind": "mawaqit", "slug": slug, "url": url}, f"Mawaqit screen, {len(clean)} days", clean
 
     def try_file(self, m: dict, page_url: str | None, href: str, label: str) -> tuple[dict | None, str, dict]:
+        """One bad file (wrong type label, huge picture, broken PDF) must not stop the rest of the site."""
+        try:
+            return self._try_file(m, page_url, href, label)
+        except MediaError as e:
+            return None, f"file: {e}", {}
+        except Exception as e:
+            if type(e).__name__ != "BadRequestError":     # anthropic: the API refused this file
+                raise
+            return None, "file: the AI could not open this file", {}
+
+    def _try_file(self, m: dict, page_url: str | None, href: str, label: str) -> tuple[dict | None, str, dict]:
         old = old_file_year(href, self.today)
         if old:
             return None, f"timetable file is from {old} (old)", {}

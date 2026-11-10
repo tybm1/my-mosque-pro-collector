@@ -199,13 +199,17 @@ with the clocks, give the ones that apply on {today}. If it shows no Jumu'ah tim
 
 
 def read_poster(m: dict, url: str, reader: Reader, today):
-    from .extract import media_type_for
+    from .extract import MediaError, media_type_for, prepare_media
     try:
         data, ctype, _ = fetch.get(url)
     except (fetch.Blocked, fetch.FetchError):
         return None
     mt = media_type_for(url, ctype)
     if not mt or len(data) > 5_000_000:
+        return None
+    try:
+        data, mt = prepare_media(data, mt)
+    except MediaError:
         return None
     import base64
     block = {"type": "document" if mt == "application/pdf" else "image",
