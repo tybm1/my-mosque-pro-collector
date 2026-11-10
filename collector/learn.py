@@ -541,6 +541,8 @@ def main():
         except Exception as e:
             if "AI call limit" in str(e):
                 return "stopped", f"{m['name']}: not learned (AI limit for this run reached)"
+            if type(e).__name__ == "AIReplyError":   # unreadable AI answer: leave it queued for the next run
+                return "stopped", f"{m['name']}: not learned ({str(e)[:80]})"
             store.update_source(src["id"], {"recipe_status": "none", "recipe_learned_at": now, "last_message": str(e)[:300]})
             return "error", f"{m['name']}: error — {str(e)[:120]}"
         breaks = int((src.get("recipe") or {}).get("breaks") or 0)

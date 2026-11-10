@@ -255,3 +255,28 @@ def test_prepare_media_fixes_wrong_labels_and_huge_pictures():
         prepare_media(b"<html>not found</html>", "application/pdf")
     with pytest.raises(MediaError):
         prepare_media(b"<html>not found</html>", "image/jpeg")
+
+
+def test_ask_retries_cut_off_answer_then_raises():
+    import threading
+    import pytest
+    from types import SimpleNamespace
+    from collector.extract import AIReplyError, Reader
+
+    def fake_reader(replies):
+        r = Reader.__new__(Reader)
+        r.calls, r.max_calls, r._lock, r.sizes = 0, 10, threading.Lock(), []
+
+        def create(**kw):
+            r.sizes.append(kw["max_tokens"])
+            text = replies.pop(0)
+            return SimpleNamespace(content=[SimpleNamespace(type="text", text=text)], stop_reason="end_turn")
+        r.client = SimpleNamespace(messages=SimpleNamespace(create=create))
+        return r
+
+    r = fake_reader(['{"jumuah": {"slots": [{"name": "1st", "jam', '{"jumuah": null, "sisters": "yes"}'])
+    assert r.ask("q", max_tokens=800) == {"jumuah": None, "sisters": "yes", "days": {}}
+    assert r.sizes == [800, 4000] and r.calls == 2
+    r = fake_reader(["sorry", "still no json"])
+    with pytest.raises(AIReplyError):            # never saved as "nothing found"
+        r.ask("q", max_tokens=800)

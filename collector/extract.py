@@ -140,11 +140,22 @@ class Reader:
             self.calls += 1
 
     def ask(self, prompt: str, max_tokens: int = 2000) -> dict:
-        """Any question that should come back as JSON (used to learn recipes)."""
-        self._count()
-        msg = self.client.messages.create(model=config.CLAUDE_MODEL, max_tokens=max_tokens,
-                                          messages=[{"role": "user", "content": prompt}])
-        return parse_reply("".join(b.text for b in msg.content if getattr(b, "type", "") == "text"))
+        """Any question that should come back as JSON (used to learn recipes and read profiles).
+        An answer that isn't readable JSON (e.g. cut off at max_tokens) is asked again once with more
+        room; if it still can't be read, AIReplyError is raised so the caller retries on a later run
+        instead of saving "nothing found" and never asking again."""
+        reply, stop = "", None
+        for attempt in range(2):
+            self._count()
+            msg = self.client.messages.create(model=config.CLAUDE_MODEL,
+                                              max_tokens=max_tokens if attempt == 0 else max(4 * max_tokens, 4000),
+                                              messages=[{"role": "user", "content": prompt}])
+            reply = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+            stop = getattr(msg, "stop_reason", None)
+            out = parse_reply(reply)
+            if not out.get(UNREADABLE):
+                return out
+        raise AIReplyError(f"AI answer could not be read (stop: {stop}): {reply[:80]!r}")
 
     def read(self, mosque: dict, today: date, *, text: str | None = None,
              data: bytes | None = None, media_type: str | None = None) -> dict:
@@ -169,16 +180,23 @@ class Reader:
         return parse_reply(reply)
 
 
+UNREADABLE = "_unreadable"
+
+
+class AIReplyError(RuntimeError):
+    """The AI's answer could not be read as JSON, even after asking again."""
+
+
 def parse_reply(reply: str) -> dict:
     m = re.search(r"\{.*\}", reply, re.S)
     if not m:
-        return {"has_jamaat": False, "days": {}, "note": "no JSON in reply"}
+        return {"has_jamaat": False, "days": {}, "note": "no JSON in reply", UNREADABLE: True}
     try:
         out = json.loads(m.group(0))
     except json.JSONDecodeError:
-        return {"has_jamaat": False, "days": {}, "note": "unreadable JSON"}
+        return {"has_jamaat": False, "days": {}, "note": "unreadable JSON", UNREADABLE: True}
     if not isinstance(out, dict):
-        return {"has_jamaat": False, "days": {}, "note": "unexpected reply"}
+        return {"has_jamaat": False, "days": {}, "note": "unexpected reply", UNREADABLE: True}
     if not isinstance(out.get("days"), dict):
         out["days"] = {}
     return out
