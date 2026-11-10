@@ -404,6 +404,14 @@ def main():
     if args.try_url:
         r = Reader(max_calls=3)
         m = {"name": urlparse(args.try_url).netloc, "town": "UK"}
+        ask = r.ask
+
+        def show(prompt, **kw):                  # print what the AI is given and what it answers
+            print("----- extracts sent -----\n" + prompt.split("EXTRACTS:", 1)[-1][:4000])
+            ans = ask(prompt, **kw)
+            print("----- AI answer -----\n" + json.dumps(ans, indent=2))
+            return ans
+        r.ask = show
         try:
             print(json.dumps(read_profile(m, args.try_url, r, None, today), indent=2))
         except fetch.Blocked as e:
