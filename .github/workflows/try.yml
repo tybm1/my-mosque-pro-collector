@@ -25,7 +25,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Install headless browser (for sites that show times with JavaScript)
-        run: python -m playwright install --with-deps chromium
+        run: bash scripts/install_browser.sh
       - name: Results
         run: |
           for u in ${{ inputs.urls }}; do

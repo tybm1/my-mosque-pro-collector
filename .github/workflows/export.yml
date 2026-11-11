@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python -m playwright install --with-deps chromium
+      - run: bash scripts/install_browser.sh
       - run: python scripts/page_dump.py
         env:
           PYTHONPATH: .

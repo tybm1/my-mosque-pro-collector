@@ -20,7 +20,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Install headless browser (for sites that show times with JavaScript)
-        run: python -m playwright install --with-deps chromium
+        run: bash scripts/install_browser.sh
       - run: python -m collector.load_seed
 
   try-sites:
@@ -37,7 +37,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Install headless browser (for sites that show times with JavaScript)
-        run: python -m playwright install --with-deps chromium
+        run: bash scripts/install_browser.sh
       - run: |
           for u in https://www.eastlondonmosque.org.uk/prayer-times https://greenlanemasjid.org https://finsburyparkmosque.org; do
             echo "=== $u"; python -m collector.learn --try "$u" || true

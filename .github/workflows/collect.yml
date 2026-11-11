@@ -40,7 +40,7 @@ jobs:
           cache: pip
       - run: pip install -r requirements.txt
       - name: Install headless browser (for sites that show times with JavaScript)
-        run: python -m playwright install --with-deps chromium
+        run: bash scripts/install_browser.sh
 
       - name: Collect today's jamaat times (first, so they're ready as early as possible)
         if: github.event.schedule == '20 0 * * *' || github.event_name == 'workflow_dispatch'
