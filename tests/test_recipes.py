@@ -115,6 +115,25 @@ def test_pick_file_link_prefers_this_month():
     assert href == "https://m.org/up/Timetable-October-2026.pdf"
 
 
+def test_pick_file_link_follows_islamic_months():
+    """Timetables named by Islamic month (Rochdale: Jumad-Al-Ula.pdf, ending 10 Nov 2026) must move on to the
+    next month's file; recipes learned with the old month's words still find it."""
+    html = b"""<a href="/up/2026/10/Jumad-Al-Ula.pdf">Download Timetable</a>
+               <a href="/up/2026/11/Jumad-Al-Akhirah.pdf">Download Timetable</a>"""
+    old_words = ["download", "timetable", "jumad", "ula"]
+    href, _ = pick_file_link(soup_of(html), "https://m.org/", old_words, date(2026, 11, 11))
+    assert href.endswith("Jumad-Al-Akhirah.pdf")
+    # mid-month the current file wins even when listed second
+    html2 = html.replace(b"Akhirah", b"XXX").replace(b"Jumad-Al-Ula", b"Rabi-ul-Thani") + \
+        b'<a href="/up/2026/10/Jumada-I-1448.pdf">Download Timetable</a>'
+    href, _ = pick_file_link(soup_of(html2), "https://m.org/", old_words, date(2026, 10, 25))
+    assert href.endswith("Jumada-I-1448.pdf")
+    # only last month's file posted yet: still picked (the date checks decide what is usable)
+    only_old = b'<a href="/up/2026/10/Jumad-Al-Ula.pdf">Download Timetable</a>'
+    assert pick_file_link(soup_of(only_old), "https://m.org/", old_words, date(2026, 11, 11))
+    assert recipes.link_words("https://m.org/up/Jumad-Al-Ula-1448.pdf", "Download") == ["download"]
+
+
 def test_old_timetable_files_are_not_picked():
     """A picture uploaded years ago (e.g. a 'December 2021' screenshot still on the page) must not be
     read as this year's timetable."""

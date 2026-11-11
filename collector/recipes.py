@@ -464,11 +464,52 @@ def apply_mawaqit(page: bytes, today: date, days_ahead: int = 30) -> dict:
 
 # ──────────────────────────── timetable file links ────────────────────────────
 
+# Words of Islamic (Hijri) month names as sites spell them in timetable file names
+# ("Jumad-Al-Ula.pdf", "Rabi-ul-Awwal-1448.pdf"): they change every month, like Gregorian month names.
+HIJRI_WORDS = {"muharram", "muharam", "safar", "rabi", "rabia", "rabiul", "rabee", "awwal", "awal", "thani", "thaani",
+               "akhir", "akhira", "akhirah", "aakhir", "akhar", "jumad", "jumada", "jumadi", "jamad", "jamada", "jamadi",
+               "jumaad", "jamaad", "jumadal", "jamadal", "jumadul", "jamadul", "ula", "oola", "ulaa", "ukhra", "rajab",
+               "shaban", "shaaban", "ramadan", "ramadhan", "ramzan", "ramadaan", "shawwal", "shawal", "dhul", "dhu", "zul",
+               "qadah", "qadah", "qidah", "qadh", "qaadah", "hijjah", "hijja", "hajj"}
+
+_HIJRI_MONTH_RE = [
+    re.compile(r"muhar+am"),
+    re.compile(r"safar"),
+    re.compile(r"rabi\w{0,4}\W{0,2}(?:[aeu]l?\W{0,2})?(?:aw+al|ula|oola|\bi\b|1\b)"),
+    re.compile(r"rabi\w{0,4}\W{0,2}(?:[aeu]l?\W{0,2})?(?:thaa?ni|aa?khir|\bii\b|2\b)"),
+    re.compile(r"j[au]maa?d\w{0,3}\W{0,2}(?:[aeu]l?\W{0,2})?(?:ula|oola|ulaa|aw+al|\bi\b|1\b)"),
+    re.compile(r"j[au]maa?d\w{0,3}\W{0,2}(?:[aeu]l?\W{0,2})?(?:thaa?ni|aa?khir|ukhra|\bii\b|2\b)"),
+    re.compile(r"rajab"),
+    re.compile(r"sha'?a?ban"),
+    re.compile(r"rama[dz]h?aa?n"),
+    re.compile(r"shaw+al"),
+    re.compile(r"(?:dh?u|zu)\W?l?\W{0,2}q[ai]'?a?d"),
+    re.compile(r"(?:dh?u|zu)\W?l?\W{0,2}hij"),
+]
+
+
+def hijri_month(d: date) -> int:
+    """Islamic month (1–12) of a date by the tabular calendar (within a day or two of the sighted calendar)."""
+    l = d.toordinal() + 1721425 - 1948440 + 10632
+    n = (l - 1) // 10631
+    l = l - 10631 * n + 354
+    j = ((10985 - l) // 5316) * ((50 * l) // 17719) + (l // 5670) * ((43 * l) // 15238)
+    l = l - ((30 - j) // 15) * ((17719 * j) // 50) - (j // 16) * ((15238 * j) // 43) + 29
+    return (24 * l) // 709
+
+
+def hijri_months_named(text: str) -> set[int]:
+    """Islamic months named in a file name or link label."""
+    t = text.lower().replace("%20", " ")
+    return {i + 1 for i, rx in enumerate(_HIJRI_MONTH_RE) if rx.search(t)}
+
+
 def link_words(href: str, label: str) -> list[str]:
     """Words that identify a mosque's timetable file link, minus the parts that change monthly."""
     s = (label + " " + href.rsplit("/", 1)[-1]).lower()
     s = re.sub(r"\.(pdf|png|jpe?g|webp)\b", " ", s)
-    words = [w for w in re.findall(r"[a-z]{3,}", s) if w not in MONTHS and w not in {"http", "https", "www", "uploads", "content", "files"}]
+    words = [w for w in re.findall(r"[a-z]{3,}", s)
+             if w not in MONTHS and w not in HIJRI_WORDS and w not in {"http", "https", "www", "uploads", "content", "files"}]
     return list(dict.fromkeys(words))[:8]
 
 
@@ -545,6 +586,11 @@ def pick_file_link(soup: BeautifulSoup, base: str, words: list[str], today: date
     links = [(urljoin(base, a["href"]), a.get_text(" ", strip=True)) for a in soup.find_all("a", href=True)]
     links = [(h, lab) for h, lab in links if TIMETABLE_FILE.search(h) and not old_file_year(h, today)]
     pics = [(h, alt) for h, alt in page_images(soup, base) if not old_file_year(h, today)]
+    words = [w for w in words if w not in HIJRI_WORDS]   # recipes learned before Hijri names were left out
+    # the tabular Hijri calendar can be a day or two off the sighted one: favour the month starting
+    # in two days' time, and still accept the one that began two days ago
+    from datetime import timedelta
+    h_now, h_prev = hijri_month(today + timedelta(days=2)), hijri_month(today - timedelta(days=2))
     # links first (as before); a posted picture only when no linked file fits
     for candidates in (links, pics):
         best, best_score = None, 0
@@ -554,6 +600,11 @@ def pick_file_link(soup: BeautifulSoup, base: str, words: list[str], today: date
             hay = (label + " " + href).lower()
             if any(mn in hay for mn in month_names):
                 score += 3
+            named = hijri_months_named(label + " " + href.rsplit("/", 1)[-1])
+            if h_now in named:
+                score += 3
+            elif h_prev in named:
+                score += 2
             if str(today.year) in hay:
                 score += 1
             if score > best_score:
