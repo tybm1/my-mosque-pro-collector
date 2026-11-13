@@ -490,7 +490,9 @@ def candidate_pages(body: bytes, base: str, site: str) -> list[str]:
             continue
         if NOT_PAGES.search(href) or TIMETABLE_FILE_RX.search(href):
             continue
-        if urlparse(href).netloc.lower().removeprefix("www.") != site:
+        host = urlparse(href).netloc.lower().removeprefix("www.")
+        if host != site and not host.endswith("." + site):
+            # the mosque's own subdomains count as its site (e.g. prayertime.duhornchurch.org.uk)
             continue
         hay = a.get_text(" ", strip=True) + " " + urlparse(href).path
         if not PAGE_WORDS.search(hay):

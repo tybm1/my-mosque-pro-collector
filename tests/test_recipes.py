@@ -595,3 +595,12 @@ def test_learn_starts_from_homepage_when_saved_page_is_gone(monkeypatch):
     fake_web(monkeypatch)
     recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org/our-centre")
     assert recipe["kind"] == "table" and url == "https://m.org/prayer-times"
+
+
+def test_candidate_pages_include_the_mosques_own_subdomain():
+    """duhornchurch.org.uk links 'View Full Timetable' to prayertime.duhornchurch.org.uk/calendar."""
+    body = (b'<html><body><a href="https://prayertime.duhornchurch.org.uk/calendar">View Full Timetable</a>'
+            b'<a href="https://otherduhornchurch.org.uk/prayer-times">Prayer times</a>'
+            b'<a href="https://elsewhere.org/prayer-times">Prayer times</a></body></html>')
+    links = learn.candidate_pages(body, "https://duhornchurch.org.uk/", "duhornchurch.org.uk")
+    assert links == ["https://prayertime.duhornchurch.org.uk/calendar"]
