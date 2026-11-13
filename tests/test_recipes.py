@@ -270,6 +270,26 @@ def test_learn_opens_javascript_pages_in_a_browser(monkeypatch):
     assert recipe["kind"] == "table" and recipe["render"] is True and "browser" in msg
 
 
+def test_learn_opens_browser_when_plain_page_shows_only_next_prayers(monkeypatch):
+    """Plain page has only a 'next 5 prayers' box (1 day); the rendered page has the month table."""
+    box = (b"<html><body><h1>Prayer timetable</h1><p>Loading</p><p>Next 5 Salah Times</p>"
+           b"<div>Maghrib Today 6:05 PM 6:05 PM</div><div>Isha Today 7:30 PM 7:45 PM</div></body></html>")
+    pages = {"https://m.org/": HOME, "https://m.org/prayer-times": box}
+    monkeypatch.setattr(fetch, "get", lambda url: (pages[url], "text/html", "h"))
+    monkeypatch.setattr(fetch, "render", lambda url: TABLE if url.endswith("prayer-times") else HOME)
+
+    class Reader(FakeReader):
+        def read(self, mosque, today, **kw):
+            self.calls += 1
+            full = "Fajr" in kw.get("text", "") and "17" in kw.get("text", "")
+            return {"has_jamaat": True, "days": AI_SAYS if full else {"2026-10-16": AI_SAYS["2026-10-16"]}}
+
+    reader = Reader({"kind": "page_ai"}, AI_SAYS)
+    recipe, msg, days, url = learn.Learner(reader, TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["render"] is True and "browser" in msg and len(days) == 2
+    assert url == "https://m.org/prayer-times"
+
+
 def test_daily_run_renders_when_recipe_says_so(monkeypatch):
     from collector import run
     monkeypatch.setattr(fetch, "get", lambda url: (b"<html><body>Loading</body></html>", "text/html", "h"))

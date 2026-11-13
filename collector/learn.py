@@ -362,6 +362,22 @@ class Learner:
             if "html" not in ctype:
                 continue
             recipe, msg, days, more = self.try_page(m, url, body)
+            if (recipe and recipe["kind"] == "page_ai" and len(days) <= 2 and renders < MAX_RENDERS_PER_SITE
+                    and (url == start or PAGE_WORDS.search(url) or screen_host(url))):
+                # The plain download showed only a "today / next prayers" box; the full month table is often
+                # filled in by JavaScript (e.g. lancasterisoc.org/times). Open it in a browser and keep
+                # whichever reading covers more days — both are checked the same way.
+                renders += 1
+                try:
+                    rbody = fetch.render(url)
+                except (fetch.Blocked, fetch.FetchError):
+                    rbody = None
+                if rbody:
+                    r2, msg2, days2, _ = self.try_page(m, url, rbody)
+                    if r2 and len(days2) > len(days):
+                        if r2["kind"] in ("table", "fields", "page_ai"):
+                            r2["render"] = True
+                        return r2, msg2 + " (page opened in a browser)", days2, r2.get("url") or url
             if recipe:
                 return recipe, msg, days, recipe.get("url") or url
             if msg == "no times on page" and renders < MAX_RENDERS_PER_SITE and (url == start or PAGE_WORDS.search(url) or screen_host(url)):
