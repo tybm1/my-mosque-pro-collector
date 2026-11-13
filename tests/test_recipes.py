@@ -604,3 +604,34 @@ def test_candidate_pages_include_the_mosques_own_subdomain():
             b'<a href="https://elsewhere.org/prayer-times">Prayer times</a></body></html>')
     links = learn.candidate_pages(body, "https://duhornchurch.org.uk/", "duhornchurch.org.uk")
     assert links == ["https://prayertime.duhornchurch.org.uk/calendar"]
+
+
+def test_learn_opens_homepage_in_browser_when_address_gains_a_slash(monkeypatch):
+    """'https://m.org' comes back as 'https://m.org/': the homepage must still be opened in a browser."""
+    shell = b"<html><body><h1>Test Masjid</h1><div id='pt'>Loading</div></body></html>"
+
+    def get(url):
+        if url != "https://m.org":
+            raise fetch.FetchError("HTTP 404")
+        fetch.final_url[url] = "https://m.org/"
+        return shell, "text/html", "h"
+    monkeypatch.setattr(fetch, "get", get)
+    monkeypatch.setattr(fetch, "render", lambda url: TABLE if url == "https://m.org/" else shell)
+    recipe, msg, days, url = learn.Learner(FakeReader(TABLE_ANSWER, AI_SAYS), TODAY).learn(LONDON, "https://m.org")
+    assert recipe["kind"] == "table" and recipe["render"] is True and url == "https://m.org/"
+
+
+def test_learn_opens_browser_when_plain_page_cannot_be_read_reliably(monkeypatch):
+    """Plain page AI reading fails checks; the rendered page has the full table and reads fine."""
+    box = b"<html><body><h1>Prayer timetable</h1><p>Isha Today 7:30 PM 7:45 PM</p></body></html>"
+    pages = {"https://m.org/": HOME, "https://m.org/prayer-times": box}
+    monkeypatch.setattr(fetch, "get", lambda url: (pages[url], "text/html", "h"))
+    monkeypatch.setattr(fetch, "render", lambda url: TABLE if url.endswith("prayer-times") else HOME)
+
+    class Reader(FakeReader):
+        def read(self, mosque, today, **kw):
+            self.calls += 1
+            return {"has_jamaat": "Fajr" in kw.get("text", ""), "days": AI_SAYS}
+
+    recipe, msg, days, url = learn.Learner(Reader({"kind": "page_ai"}, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
+    assert recipe["render"] is True and "browser" in msg and url == "https://m.org/prayer-times"
