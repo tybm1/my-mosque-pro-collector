@@ -421,7 +421,6 @@ def main():
     store = Store()
     reader = Reader(max_calls=config.MAX_AI_CALLS_LEARN)
     week_ago = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%dT%H:%M:%SZ")
-    fortnight = (datetime.now(timezone.utc) - timedelta(days=14)).strftime("%Y-%m-%dT%H:%M:%SZ")
     if args.jumuah:
         change = recent_clock_change(today)
         stale = f",jumuah->>at.lt.{change.isoformat()}" if change else ""
@@ -448,9 +447,9 @@ def main():
         return
     mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,profile_at,jumuah_hash,sisters_web,sources(url,recipe)"
                                 "&active=is.true&website=not.is.null"
-                                # never read, or no Jumu'ah found yet: look again every two weeks (AI only
+                                # never read, or no Jumu'ah found yet: look again every week (AI only
                                 # when the website's text changed), so newly posted Jumu'ah times are picked up
-                                f"&or=(profile_checked_at.is.null,and(jumuah.is.null,profile_checked_at.lt.{fortnight}))"
+                                f"&or=(profile_checked_at.is.null,and(jumuah.is.null,profile_checked_at.lt.{week_ago}))"
                                 "&order=profile_priority.desc,profile_checked_at.asc.nullsfirst,id",
                          headers={"Range": f"0-{args.limit - 1}"})
     counts, log = {"jumuah": 0, "sisters": 0, "unchanged": 0, "nothing": 0, "blocked": 0, "error": 0}, []
