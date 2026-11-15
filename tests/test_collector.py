@@ -280,3 +280,20 @@ def test_ask_retries_cut_off_answer_then_raises():
     r = fake_reader(["sorry", "still no json"])
     with pytest.raises(AIReplyError):            # never saved as "nothing found"
         r.ask("q", max_tokens=800)
+
+
+def test_page_text_adds_address_from_map_link_and_footer_without_changing_hash():
+    # slmcel.org.uk ("SLMCEL Masjid Darul Ilm") shows its address only in a map link and the footer;
+    # without it the reader refused the page as not clearly the Sri Lankan Muslim Centre.
+    body = ("<html><body><h1>SLMCEL Masjid Darul Ilm</h1><p>Fajr 05:21</p>"
+            "<a href='https://maps.google.com/?q=16-18%20Pilgrims%20Way%2C%20East%20Ham%2C%20London%20E6%201HW'>Visit</a>"
+            "<a href='https://www.google.com/maps/@51.5,0.05,15z'>map</a>"
+            "<footer><p>Contact us</p><p>16-18 Pilgrims Way, London E6 1HW</p></footer></body></html>")
+    text, _ = page_text(body.encode(), "https://www.slmcel.org.uk/")
+    assert "[Address shown on this site: 16-18 Pilgrims Way, East Ham, London E6 1HW]" in text
+    assert "[Address shown on this site: 16-18 Pilgrims Way, London E6 1HW]" in text
+    assert "Contact us" not in text                       # footer itself still left out
+    no_addr = body.replace("maps.google.com", "example.org").replace("E6 1HW</p></footer>", "</p></footer>")
+    t2, _ = page_text(no_addr.encode(), "https://www.slmcel.org.uk/")
+    assert "Address shown" not in t2
+    assert fingerprint_text(text) == fingerprint_text(text.split("\n[Address")[0])

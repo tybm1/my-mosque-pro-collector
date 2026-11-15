@@ -8,7 +8,7 @@ import hashlib
 import json
 import re
 from datetime import date
-from urllib.parse import urljoin
+from urllib.parse import parse_qs, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 
@@ -57,9 +57,39 @@ def join_split_clocks(text: str) -> str:
     return _SPLIT_CLOCK.sub(r"\1:\2", text)
 
 
+ADDRESS_NOTE = "[Address shown on this site: "
+_POSTCODE = re.compile(r"\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b")
+_MAP_HOST = re.compile(r"(^|\.)(google\.[a-z.]+|maps\.apple\.com|bing\.com|openstreetmap\.org)$", re.I)
+
+
+def site_addresses(soup) -> list[str]:
+    """Addresses a page shows only in a map link (maps.google.com/?q=16-18 Pilgrims Way, London E6 1HW)
+    or in its footer, which page_text drops. Many sites name the mosque differently from our list
+    (e.g. by its charity's initials), and the address is what lets the reader see it is the same place."""
+    found = []
+    for a in soup.find_all(["a", "iframe"]):
+        href = a.get("href") or a.get("src") or ""
+        u = urlparse(href)
+        if not _MAP_HOST.search(u.netloc or "") or "map" not in (u.netloc + u.path).lower():
+            continue
+        q = parse_qs(u.query)
+        for key in ("q", "query", "daddr", "address", "destination"):
+            for v in q.get(key, []):
+                v = " ".join(v.split())
+                if 6 <= len(v) <= 150 and not re.fullmatch(r"[-\d.,\s]+", v):   # not bare coordinates
+                    found.append(v)
+    for f in soup.find_all("footer"):
+        for line in f.get_text("\n", strip=True).split("\n"):
+            line = " ".join(line.split())
+            if _POSTCODE.search(line) and len(line) <= 150:
+                found.append(line)
+    return list(dict.fromkeys(found))[:3]
+
+
 def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
     """Visible text of an HTML page (tables kept as rows) and links to timetable files."""
     soup = BeautifulSoup(html, "html.parser")
+    addresses = site_addresses(soup)
     for tag in soup(["script", "style", "noscript", "svg", "nav", "footer", "form", "iframe"]):
         tag.decompose()
     for tr in soup.find_all("tr"):
@@ -73,12 +103,16 @@ def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
         label = a.get_text(" ", strip=True) + " " + href
         if FILE_LINK.search(href) and TIMETABLE_WORDS.search(label):
             links.append(href)
-    return text[:60000], list(dict.fromkeys(links))[:3]
+    text = text[:60000]
+    if addresses:
+        text += "\n" + "\n".join(ADDRESS_NOTE + a + "]" for a in addresses)
+    return text, list(dict.fromkeys(links))[:3]
 
 
 def fingerprint_text(text: str) -> str:
     """Fingerprint that ignores clocks/countdowns that change every minute on many pages."""
     stable = re.sub(r"\b\d{1,2}:\d{2}:\d{2}\b", "", text)
+    stable = "\n".join(l for l in stable.split("\n") if not l.startswith(ADDRESS_NOTE))   # same hash as before
     return hashlib.sha256(stable.encode()).hexdigest()
 
 
