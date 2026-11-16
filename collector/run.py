@@ -18,7 +18,7 @@ from zoneinfo import ZoneInfo
 
 from . import config, fetch
 from .extract import Reader, fingerprint_text, has_times, media_type_for, page_text
-from .recipes import (RecipeError, apply_fields, apply_mawaqit, apply_table_html, apply_table_pdf,
+from .recipes import (RecipeError, outside_named_hijri_month, apply_fields, apply_mawaqit, apply_table_html, apply_table_pdf,
                       pick_file_link, soup_of)
 from .store import Store
 from .validate import PRAYERS, check_timetable, to_minutes
@@ -103,6 +103,8 @@ def ai_read(src: dict, urls: list[str], today: date, reader: Reader, store: Stor
                 best = ("unchanged", fp, {}, "")
             continue
         days = drop_empty_days(days)
+        for k in outside_named_hijri_month(used, days or {}):
+            days.pop(k, None)              # date can't be on a file named after another Islamic month
         clean, problems, accepted = check_timetable(days, m["lat"], m["lng"], today) if status == "ok" else ({}, [], False)
         if status == "ok" and not accepted:
             status, note = "invalid", "; ".join(problems[:3]) or "no usable days"

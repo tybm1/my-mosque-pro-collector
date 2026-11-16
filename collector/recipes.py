@@ -504,6 +504,26 @@ def hijri_months_named(text: str) -> set[int]:
     return {i + 1 for i, rx in enumerate(_HIJRI_MONTH_RE) if rx.search(t)}
 
 
+def outside_named_hijri_month(href: str, days: dict) -> list[str]:
+    """Dates read from a timetable file named after an Islamic month (e.g. "Jumad-Al-Ula.pdf") that fall
+    outside that month (a day or two of slack for moon sighting). An old month's file read again after it
+    ran out once gave a stray "6 December" row from its last line; such dates can't be on that file."""
+    from urllib.parse import unquote
+    name = unquote(href.rsplit("/", 1)[-1].split("?", 1)[0])
+    named = hijri_months_named(name)
+    if not named or any(w in MONTHS for w in re.findall(r"[a-z]+", name.lower())):
+        return []                          # not a Hijri-month file (or also names a Gregorian month)
+    out = []
+    for k in days:
+        try:
+            d = date.fromisoformat(str(k)[:10])
+        except ValueError:
+            continue
+        if not {hijri_month(d + timedelta(days=o)) for o in (-2, -1, 0, 1, 2)} & named:
+            out.append(k)
+    return out
+
+
 def link_words(href: str, label: str) -> list[str]:
     """Words that identify a mosque's timetable file link, minus the parts that change monthly."""
     s = (label + " " + href.rsplit("/", 1)[-1]).lower()

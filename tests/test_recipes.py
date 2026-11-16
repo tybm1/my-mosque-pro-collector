@@ -635,3 +635,13 @@ def test_learn_opens_browser_when_plain_page_cannot_be_read_reliably(monkeypatch
 
     recipe, msg, days, url = learn.Learner(Reader({"kind": "page_ai"}, AI_SAYS), TODAY).learn(LONDON, "https://m.org/")
     assert recipe["render"] is True and "browser" in msg and url == "https://m.org/prayer-times"
+
+
+def test_outside_named_hijri_month_drops_stray_dates():
+    from collector.recipes import outside_named_hijri_month
+    url = "https://centralmosquerochdale.com/wp-content/uploads/2026/10/Jumad-Al-Ula.pdf"
+    days = {"2026-10-20": {}, "2026-11-08": {}, "2026-12-06": {}}
+    assert outside_named_hijri_month(url, days) == ["2026-12-06"]
+    # Gregorian-named files and plain files are left alone
+    assert outside_named_hijri_month("https://x.org/uploads/November-2026.pdf", days) == []
+    assert outside_named_hijri_month("https://x.org/timetable.pdf", days) == []
