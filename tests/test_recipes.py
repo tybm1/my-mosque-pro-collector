@@ -533,6 +533,23 @@ def test_profile_reads_jumuah_from_masjidbox_screen_and_moved_site(monkeypatch):
     assert "12:30" in combined
 
 
+def test_profile_renders_timetable_page_that_only_shows_times_in_a_browser(monkeypatch):
+    """West Drayton: the homepage is the timetable source (recipe render=true); its Jumu'ah J1/J2/J3
+    times are filled in by JavaScript. The plain page mentions facilities, so it was kept as is and
+    the rendered copy was never read (start http://m.org vs source https://www.m.org/)."""
+    from collector import profile
+    plain = (b"<html><body><h1>Test Masjid</h1><p>Our facilities include a hall.</p>" + b"<p>about us</p>" * 80 + b"</body></html>")
+    rendered = plain.replace(b"</body>", b"<div>Jumu'ah</div><div>J1</div><div>12:30 PM</div><div>J2</div><div>01:00 PM</div></body>")
+    calls = []
+    monkeypatch.setattr(fetch, "get", lambda url: (plain, "text/html", "h"))
+    monkeypatch.setattr(fetch, "render", lambda url: calls.append(url) or rendered)
+    got, combined, media = profile.site_pages(LONDON, "http://m.org")
+    assert "12:30" not in combined and not calls
+    got, combined, media = profile.site_pages(LONDON, "http://m.org", ["https://www.m.org/"], render=["https://www.m.org/"])
+    assert "12:30 PM" in combined and calls == ["http://m.org"]
+    assert profile.same_page("http://m.org", "https://www.m.org/") and not profile.same_page("https://m.org/a", "https://m.org/b")
+
+
 def test_times_with_am_pm_attached_count_as_times():
     """'5:24am' / '12:30pm' (no space) must count: such pages were parked as 'no times on page'."""
     from collector.extract import has_times

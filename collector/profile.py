@@ -122,16 +122,28 @@ def relevant(text: str, limit: int = 6000) -> str:
     return out[:limit]
 
 
-def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first: bool = False):
+def same_page(a: str | None, b: str | None) -> bool:
+    """Same page whatever the scheme, www. or trailing slash (http://m.org == https://www.m.org/)."""
+    if not a or not b:
+        return False
+    pa, pb = urlparse(a), urlparse(b)
+    return (pa.netloc.lower().removeprefix("www."), pa.path.rstrip("/"), pa.query) == \
+           (pb.netloc.lower().removeprefix("www."), pb.path.rstrip("/"), pb.query)
+
+
+def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first: bool = False,
+               render: list[str] | None = None):
     """([(url, relevant text)], combined text, [Jumu'ah poster/PDF urls]) for the home page, the
-    mosque's timetable page and the most relevant linked pages."""
+    mosque's timetable page and the most relevant linked pages. Pages in `render` (the timetable page
+    when its times only appear in a browser) are always opened in a browser."""
     site = urlparse(start).netloc.lower().removeprefix("www.")
-    got, queue, seen, media = [], [start] + [u for u in (extra or []) if u and u != start], set(), []
+    got, queue, seen, media = [], [start] + [u for u in (extra or []) if u and not same_page(u, start)], set(), []
     while queue and len(got) < MAX_PAGES:
         url = queue.pop(0)
         if url in seen:
             continue
         seen.add(url)
+        asked = url
         try:
             body, ctype, _ = fetch.get(url)
         except fetch.Blocked:
@@ -149,7 +161,8 @@ def site_pages(m: dict, start: str, extra: list[str] | None = None, render_first
             continue
         text, _ = page_text(body, url)
         jum_lines = [l for l in text.split("\n") if JUM.search(l)]
-        needs_browser = len(text) < 400 or render_first or (jum_lines and not HAS_TIME.search(relevant(text)))
+        needs_browser = len(text) < 400 or render_first or (jum_lines and not HAS_TIME.search(relevant(text))) or \
+            any(same_page(url, r) or same_page(asked, r) for r in (render or []))
         if needs_browser:                         # page fills in its content with JavaScript
             try:
                 body = fetch.render(url)
@@ -225,8 +238,9 @@ def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, tod
                  timetable_url: str | None = None, render_timetable: bool = False) -> dict:
     """Returns fields to save on the mosque (may be just profile_checked_at when nothing changed)."""
     now = datetime.now(timezone.utc).isoformat()
-    pages, text, media = site_pages(m, start, [timetable_url] if timetable_url else None)
-    if render_timetable and timetable_url and not any(u == timetable_url for u, _ in pages):
+    pages, text, media = site_pages(m, start, [timetable_url] if timetable_url else None,
+                                    render=[timetable_url] if render_timetable and timetable_url else None)
+    if render_timetable and timetable_url and not any(same_page(u, timetable_url) for u, _ in pages):
         try:
             t2 = relevant(page_text(fetch.render(timetable_url), timetable_url)[0])
             if t2:
