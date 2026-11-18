@@ -305,3 +305,4 @@ def test_ai_prompt_says_a_time_printed_once_covers_the_days_it_spans():
     from collector.extract import PROMPT
     text = PROMPT.format(name="M", where="W", today="2026-11-18")
     assert "merged cell" in text and "next printed time" in text
+    assert "applies to those dates only" in text          # a Fridays-only box is not spread over the week
