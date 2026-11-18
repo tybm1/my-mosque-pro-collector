@@ -297,3 +297,11 @@ def test_page_text_adds_address_from_map_link_and_footer_without_changing_hash()
     t2, _ = page_text(no_addr.encode(), "https://www.slmcel.org.uk/")
     assert "Address shown" not in t2
     assert fingerprint_text(text) == fingerprint_text(text.split("\n[Address")[0])
+
+
+def test_ai_prompt_says_a_time_printed_once_covers_the_days_it_spans():
+    # Central Mosque Rochdale's Hijri-month PDF prints Fajr/Zuhr/Asr iqamah once a week in merged cells;
+    # the AI returned Isha only for the days between, so every such day failed "fewer than two times".
+    from collector.extract import PROMPT
+    text = PROMPT.format(name="M", where="W", today="2026-11-18")
+    assert "merged cell" in text and "next printed time" in text
