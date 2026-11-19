@@ -360,3 +360,35 @@ def test_ai_prompt_says_a_time_printed_once_covers_the_days_it_spans():
     text = PROMPT.format(name="M", where="W", today="2026-11-18")
     assert "merged cell" in text and "next printed time" in text
     assert "applies to those dates only" in text          # a Fridays-only box is not spread over the week
+
+
+def test_poster_reply_cut_off_is_asked_again_with_more_room(monkeypatch):
+    """read_poster used max_tokens=500: answers came back empty or cut off, so no poster ever gave Jumu'ah."""
+    from datetime import date
+    import collector.profile as P
+    import collector.extract as E
+    monkeypatch.setattr(P.fetch, "get", lambda url: (b"%PDF-1.4 x", "application/pdf", url))
+    monkeypatch.setattr(E, "prepare_media", lambda data, mt: (data, mt))
+    calls = []
+
+    class Msg:
+        def __init__(self, t):
+            self.content = [type("B", (), {"type": "text", "text": t})()]
+
+    class Client:
+        class messages:
+            @staticmethod
+            def create(model, max_tokens, messages):
+                calls.append(max_tokens)
+                return Msg('{"slots": [{"name": "1st Jum' if len(calls) == 1 else
+                           '{"slots": [{"name": "1st Jumu\'ah", "khutbah": null, "jamaat": "12:45"},'
+                           ' {"name": "2nd Jumu\'ah", "khutbah": null, "jamaat": "13:10"}], "note": null}')
+
+    class R:
+        client = Client()
+        def _count(self):
+            pass
+    why = []
+    j = P.read_poster({"name": "Test"}, "https://x.org/Nov-Timetable.pdf", R(), date(2026, 11, 19), why)
+    assert [s["jamaat"] for s in j["slots"]] == ["12:45", "13:10"]
+    assert calls[0] >= 2000 and calls[1] > calls[0]

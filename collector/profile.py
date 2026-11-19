@@ -232,12 +232,18 @@ def read_poster(m: dict, url: str, reader: Reader, today, why: list | None = Non
     import base64
     block = {"type": "document" if mt == "application/pdf" else "image",
              "source": {"type": "base64", "media_type": mt, "data": base64.standard_b64encode(data).decode()}}
-    reader._count()
-    msg = reader.client.messages.create(model=config.CLAUDE_MODEL, max_tokens=500, messages=[{"role": "user", "content": [
-        block, {"type": "text", "text": POSTER_PROMPT.format(name=m["name"], today=today)}]}])
-    from .extract import parse_reply
-    reply = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
-    j = clean_jumuah(parse_reply(reply))
+    from .extract import UNREADABLE, parse_reply
+    # 500 tokens was too little: most answers came back empty or cut off mid-JSON, so posters gave nothing.
+    # Ask with room to spare, and once more with more room if the answer still isn't readable JSON.
+    for max_tokens in (2000, 6000):
+        reader._count()
+        msg = reader.client.messages.create(model=config.CLAUDE_MODEL, max_tokens=max_tokens, messages=[{"role": "user", "content": [
+            block, {"type": "text", "text": POSTER_PROMPT.format(name=m["name"], today=today)}]}])
+        reply = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+        ans = parse_reply(reply)
+        if not ans.get(UNREADABLE):
+            break
+    j = clean_jumuah(ans)
     if not j:
         note("AI: " + " ".join(reply.split())[:160])
     return j
