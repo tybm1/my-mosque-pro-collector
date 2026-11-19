@@ -183,6 +183,47 @@ def test_jumuah_from_timetable_cell():
     assert jumuah_from_cell("12:30, 17:00", separate_slots=True) is None
 
 
+def test_ambiguous_friday_cell_is_read_from_the_timetable_file(monkeypatch):
+    """Friday cell '12:30, 13:30' from a timetable PDF/picture: the file is read once by the AI (labels say which
+    is khutbah and which is jamaat); a file showing no Jumu'ah is not read again; pages are left alone."""
+    from datetime import date
+    import collector.profile as P
+    friday = "https://x.org/uploads/2026/11/November-2026.pdf"
+    rows = [{"mosque_id": 1, "day": "2026-11-20", "jumuah": "12:30, 13:30", "source_id": 9, "source_url": friday},
+            {"mosque_id": 2, "day": "2026-11-20", "jumuah": "12:30, 13:30", "source_id": 8, "source_url": friday.replace("x.org", "y.org")},
+            {"mosque_id": 3, "day": "2026-11-20", "jumuah": "12:15, 13:15", "source_id": 7, "source_url": "https://z.org/"}]
+    mosques = {1: {"id": 1, "name": "A", "jumuah": None, "jumuah_hash": None, "profile_at": "x"},
+               2: {"id": 2, "name": "B", "jumuah": None, "jumuah_hash": None, "profile_at": "x"},
+               3: {"id": 3, "name": "C", "jumuah": None, "jumuah_hash": None, "profile_at": "x"}}
+
+    class FakeStore:
+        def _req(self, method, path, headers=None, json=None):
+            if method == "GET" and path.startswith("jamaat_times"):
+                return rows
+            if method == "GET" and path.startswith("mosques"):
+                return [dict(m) for m in mosques.values()]
+            if method == "GET":
+                return []
+            mosques[int(path.split("eq.")[1])].update(json)
+    reads = []
+
+    def fake_poster(m, url, reader, today):
+        reads.append(url)
+        if "x.org" in url:
+            return {"slots": [{"name": "1st Jumu'ah", "khutbah": None, "jamaat": "12:30"},
+                              {"name": "2nd Jumu'ah", "khutbah": None, "jamaat": "13:30"}]}
+        return {"slots": []}
+    monkeypatch.setattr(P, "read_poster", fake_poster)
+    log = P.fill_from_timetables(FakeStore(), date(2026, 11, 19), reader=object())
+    assert [s["jamaat"] for s in mosques[1]["jumuah"]["slots"]] == ["12:30", "13:30"]
+    assert mosques[1]["jumuah_hash"] == P.TIMETABLE_FILE and len(log) == 1
+    assert mosques[2]["jumuah"] is None and mosques[2]["jumuah_hash"].startswith(P.TRIED)
+    assert mosques[3]["jumuah"] is None and len(reads) == 2          # a web page cell is not sent to the AI
+    P.fill_from_timetables(FakeStore(), date(2026, 11, 19), reader=object())
+    assert len(reads) == 2                                            # each file is read only once
+    assert P.fill_from_timetables(FakeStore(), date(2026, 11, 19)) == []   # no AI reader: unchanged behaviour
+
+
 def test_year_long_timetable_is_cut_to_this_month():
     from datetime import date
     from collector.extract import focus_month

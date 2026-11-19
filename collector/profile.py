@@ -288,6 +288,8 @@ TEXT:
 
 MANUAL = "manual"   # jumuah_hash value for Jumu'ah times entered by hand
 TIMETABLE = "timetable"   # jumuah_hash value for Jumu'ah times taken from the Friday row of the daily timetable
+TIMETABLE_FILE = "timetable-file"   # Jumu'ah read by AI from the timetable file whose Friday cell had several times
+TRIED = "tried:"   # jumuah_hash prefix (with jumuah null): that timetable file was read and showed no Jumu'ah
 NOT_ONE_JUMUAH = re.compile(r"khutb|adh[aā]n|azaan|azan|bay[a]+n|talk|lecture|\b1st\b|\b2nd\b|first|second|sisters|ladies", re.I)
 CELL_TIME = re.compile(r"\b(\d{1,2})[:.](\d{2})\s*([ap])?\.?m?\b", re.I)
 
@@ -313,7 +315,32 @@ def jumuah_from_cell(cell, separate_slots: bool = False) -> dict | None:
     return j if j and len(j["slots"]) == len(slots) else None    # one implausible time: use none of them
 
 
-def fill_from_timetables(store, today) -> list[str]:
+def file_key(url: str) -> str:
+    return TRIED + hashlib.sha256(url.encode()).hexdigest()[:16]
+
+
+def jumuah_from_file(m: dict, r: dict, reader, today) -> tuple[dict | None, dict | None]:
+    """The Friday cell has several times ('12:30, 13:30' — two Jumu'ahs, or khutbah + jamaat?). When it came from a
+    timetable file (PDF / picture), let the AI read that file for Jumu'ah, where the labels tell which is which.
+    Each file is read once: returns (jumuah, fields to save)."""
+    url = r.get("source_url") or ""
+    if reader is None or not MEDIA.search(url) or len(CELL_TIME.findall(str(r.get("jumuah") or ""))) < 2:
+        return None, None
+    old = m.get("jumuah") or {}
+    if old and m.get("jumuah_hash") != TIMETABLE_FILE:
+        return None, None                         # keep a single Friday time already taken from the timetable
+    if m.get("jumuah_hash") == file_key(url) or url in (old.get("url"), old.get("file_tried")):
+        return None, None                         # this file was read already
+    try:
+        j = read_poster(m, url, reader, today)
+    except Exception:                             # AI limit reached, API error: try again next run
+        return None, None
+    if not j or not j.get("slots"):              # nothing in this file: don't read it again (keep earlier times)
+        return None, ({"jumuah": {**old, "file_tried": url}} if old else {"jumuah_hash": file_key(url)})
+    return j, None
+
+
+def fill_from_timetables(store, today, reader=None) -> list[str]:
     """Mosques whose daily timetable gives Jumu'ah on Fridays, but whose website profile gave none:
     use the timetable's Friday time. Never touches times entered by hand or read from the website."""
     frm, to = (today - timedelta(days=13)).isoformat(), (today + timedelta(days=7)).isoformat()
@@ -331,25 +358,34 @@ def fill_from_timetables(store, today) -> list[str]:
     for i in range(0, len(ids), 150):
         chunk = ",".join(map(str, ids[i:i + 150]))
         mosques = store._req("GET", f"mosques?select=id,name,jumuah,jumuah_hash,profile_at&active=is.true&id=in.({chunk})"
-                                    f"&or=(jumuah.is.null,jumuah_hash.eq.{TIMETABLE})")
+                                    f"&or=(jumuah.is.null,jumuah_hash.eq.{TIMETABLE},jumuah_hash.eq.{TIMETABLE_FILE})")
         sids = ",".join(sorted({str(latest[m["id"]]["source_id"]) for m in mosques if latest[m["id"]].get("source_id")}))
         kinds = {s["id"]: (s.get("recipe") or {}).get("kind")
                  for s in (store._req("GET", f"sources?select=id,recipe&id=in.({sids})") if sids else [])}
         for m in mosques:
             r = latest[m["id"]]
             j = jumuah_from_cell(r["jumuah"], separate_slots=kinds.get(r.get("source_id")) == "mawaqit")
+            how = TIMETABLE
+            if not j and m.get("jumuah_hash") != MANUAL:
+                j, mark = jumuah_from_file(m, r, reader, today)
+                if mark:
+                    store._req("PATCH", f"mosques?id=eq.{m['id']}", headers={"Prefer": "return=minimal"}, json=mark)
+                how = TIMETABLE_FILE
+            elif m.get("jumuah_hash") == TIMETABLE_FILE:
+                continue                          # read from the file with labels: better than a bare cell
             if not j:
                 continue
             old = m.get("jumuah") or {}
-            if old.get("slots") == j["slots"]:
+            if old.get("slots") == j["slots"] and m.get("jumuah_hash") == how:
                 continue
             src = urlparse(r.get("source_url") or "").netloc.lower().removeprefix("www.") or None
             f = {"jumuah": {**j, "src": src, "url": r.get("source_url"), "at": today.isoformat()},
-                 "jumuah_hash": TIMETABLE, "jumuah_checked_at": now}
+                 "jumuah_hash": how, "jumuah_checked_at": now}
             if not m.get("profile_at"):
                 f["profile_at"] = now        # the app loads Jumu'ah only for mosques with a profile
             store._req("PATCH", f"mosques?id=eq.{m['id']}", headers={"Prefer": "return=minimal"}, json=f)
-            log.append(f"{m['name']}: Jumu'ah {', '.join(s['jamaat'] for s in j['slots'])} (from timetable, {r['day']})")
+            log.append(f"{m['name']}: Jumu'ah {', '.join(s.get('jamaat') or s.get('khutbah') or '?' for s in j['slots'])}"
+                       f" (from timetable{' file' if how == TIMETABLE_FILE else ''}, {r['day']})")
     return log
 CLOCK_WINDOW = 14   # days after a UK clock change during which every Jumu'ah is re-read
 
@@ -374,7 +410,7 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     now = datetime.now(timezone.utc).isoformat()
     j = m["jumuah"] or {}
     url = j.get("url")
-    if not url or m.get("jumuah_hash") in (MANUAL, TIMETABLE):
+    if not url or m.get("jumuah_hash") in (MANUAL, TIMETABLE, TIMETABLE_FILE):
         return {"jumuah_checked_at": now}
     change = recent_clock_change(today)
     force = bool(change and (j.get("at") or "") < change.isoformat())   # read before the clocks changed
@@ -457,7 +493,7 @@ def main():
         with ThreadPoolExecutor(max_workers=args.workers) as pool:
             log = [f.result() for f in as_completed([pool.submit(jone, m) for m in rows])]
         print(f"## Jumu'ah refresh\n\n{len(rows)} checked · AI calls: {reader.calls}\n\n" + "\n".join(f"- {l}" for l in sorted(log)))
-        report_timetable_fill(store, today)
+        report_timetable_fill(store, today, reader)
         return
     mosques = store._req("GET", "mosques?select=id,name,address,town,postcode,website,profile_hash,profile_at,jumuah_hash,sisters_web,sources(url,recipe)"
                                 "&active=is.true&website=not.is.null"
@@ -484,7 +520,7 @@ def main():
             for k in ("jumuah", "facilities"):
                 if f.get(k) is None:
                     f.pop(k, None)
-        if f.get("jumuah") and m.get("jumuah_hash") == TIMETABLE:
+        if f.get("jumuah") and m.get("jumuah_hash") in (TIMETABLE, TIMETABLE_FILE):
             f["jumuah_hash"] = None                 # the website's own Jumu'ah page now gives the times
         if m.get("jumuah_hash") == MANUAL:          # times given to us by hand: never overwrite them
             f.pop("jumuah", None)
@@ -516,12 +552,12 @@ def main():
     if os.environ.get("GITHUB_STEP_SUMMARY"):
         with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as fh:
             fh.write(summary + "\n")
-    report_timetable_fill(store, today)
+    report_timetable_fill(store, today, reader)
 
 
-def report_timetable_fill(store, today):
+def report_timetable_fill(store, today, reader=None):
     try:
-        log = fill_from_timetables(store, today)
+        log = fill_from_timetables(store, today, reader)
     except Exception as e:                       # never let this extra step fail the run
         log = [f"failed: {str(e)[:200]}"]
     summary = f"## Jumu'ah from daily timetables\n\n{len(log)} updated\n\n" + "\n".join(f"- {l}" for l in sorted(log))
