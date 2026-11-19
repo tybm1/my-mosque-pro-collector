@@ -211,18 +211,23 @@ return ONLY JSON {{"slots": [{{"name": "1st Jumu'ah", "khutbah": "13:15", "jamaa
 with the clocks, give the ones that apply on {today}. If it shows no Jumu'ah times return {{"slots": []}}."""
 
 
-def read_poster(m: dict, url: str, reader: Reader, today):
+def read_poster(m: dict, url: str, reader: Reader, today, why: list | None = None):
+    """Jumu'ah from a poster / timetable file. `why` (optional) gets the reason when nothing comes back."""
     from .extract import MediaError, media_type_for, prepare_media
+    note = why.append if why is not None else (lambda _: None)
     try:
         data, ctype, _ = fetch.get(url)
-    except (fetch.Blocked, fetch.FetchError):
+    except (fetch.Blocked, fetch.FetchError) as e:
+        note(f"fetch: {str(e)[:80]}")
         return None
     mt = media_type_for(url, ctype)
     if not mt or len(data) > 5_000_000:
+        note(f"file type {ctype} / {len(data) // 1024} KB")
         return None
     try:
         data, mt = prepare_media(data, mt)
-    except MediaError:
+    except MediaError as e:
+        note(f"media: {str(e)[:80]}")
         return None
     import base64
     block = {"type": "document" if mt == "application/pdf" else "image",
@@ -231,7 +236,11 @@ def read_poster(m: dict, url: str, reader: Reader, today):
     msg = reader.client.messages.create(model=config.CLAUDE_MODEL, max_tokens=500, messages=[{"role": "user", "content": [
         block, {"type": "text", "text": POSTER_PROMPT.format(name=m["name"], today=today)}]}])
     from .extract import parse_reply
-    return clean_jumuah(parse_reply("".join(b.text for b in msg.content if getattr(b, "type", "") == "text")))
+    reply = "".join(b.text for b in msg.content if getattr(b, "type", "") == "text")
+    j = clean_jumuah(parse_reply(reply))
+    if not j:
+        note("AI: " + " ".join(reply.split())[:160])
+    return j
 
 
 def read_profile(m: dict, start: str, reader: Reader, last_hash: str | None, today,
@@ -331,11 +340,17 @@ def jumuah_from_file(m: dict, r: dict, reader, today) -> tuple[dict | None, dict
         return None, None                         # keep a single Friday time already taken from the timetable
     if m.get("jumuah_hash") == file_key(url) or url in (old.get("url"), old.get("file_tried")):
         return None, None                         # this file was read already
+    why = []
     try:
-        j = read_poster(m, url, reader, today)
-    except Exception:                             # AI limit reached, API error: try again next run
+        j = read_poster(m, url, reader, today, why)
+    except Exception as e:                        # AI limit reached, API error: try again next run
+        print(f"  {m['name']}: Jumu'ah from {url} — {str(e)[:100]}")
         return None, None
-    if not j or not j.get("slots"):              # nothing in this file: don't read it again (keep earlier times)
+    if not j or not j.get("slots"):
+        print(f"  {m['name']}: no Jumu'ah from {url} — {'; '.join(why)}")
+        if not why or not why[0].startswith("AI:"):
+            return None, None                     # file not fetched/readable: try again next run
+        # the AI read the file and found no Jumu'ah: don't read it again (keep earlier times)
         return None, ({"jumuah": {**old, "file_tried": url}} if old else {"jumuah_hash": file_key(url)})
     return j, None
 

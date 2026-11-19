@@ -207,12 +207,13 @@ def test_ambiguous_friday_cell_is_read_from_the_timetable_file(monkeypatch):
             mosques[int(path.split("eq.")[1])].update(json)
     reads = []
 
-    def fake_poster(m, url, reader, today):
+    def fake_poster(m, url, reader, today, why=None):
         reads.append(url)
         if "x.org" in url:
             return {"slots": [{"name": "1st Jumu'ah", "khutbah": None, "jamaat": "12:30"},
                               {"name": "2nd Jumu'ah", "khutbah": None, "jamaat": "13:30"}]}
-        return {"slots": []}
+        why.append('AI: {"slots": []}')
+        return None
     monkeypatch.setattr(P, "read_poster", fake_poster)
     log = P.fill_from_timetables(FakeStore(), date(2026, 11, 19), reader=object())
     assert [s["jamaat"] for s in mosques[1]["jumuah"]["slots"]] == ["12:30", "13:30"]
