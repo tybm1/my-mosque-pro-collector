@@ -224,6 +224,18 @@ def test_ambiguous_friday_cell_is_read_from_the_timetable_file(monkeypatch):
     assert P.fill_from_timetables(FakeStore(), date(2026, 11, 19)) == []   # no AI reader: unchanged behaviour
 
 
+def test_file_named_after_a_month_is_a_timetable_candidate():
+    """usmanimosque.com/namaz-timetable/ links only uploads/2026/11/November.pdf (no 'timetable' in link or name)."""
+    html = (b'<html><body><h1>Namaz Timetable</h1><a href="/wp-content/uploads/2026/11/November.pdf"></a>'
+            b'<a href="/wp-content/uploads/2026/11/Timetable.pdf">Timetable</a>'
+            b'<a href="/wp-content/uploads/2026/11/11-Nov-2026.jpg">x</a>'
+            b'<a href="/wp-content/uploads/2026/11/logo.png">logo</a><a href="/wp-content/uploads/menu.pdf">Menu</a></body></html>')
+    _, links = page_text(html, "https://usmanimosque.com/namaz-timetable/")
+    assert links == ["https://usmanimosque.com/wp-content/uploads/2026/11/Timetable.pdf",
+                     "https://usmanimosque.com/wp-content/uploads/2026/11/November.pdf",
+                     "https://usmanimosque.com/wp-content/uploads/2026/11/11-Nov-2026.jpg"]
+
+
 def test_year_long_timetable_is_cut_to_this_month():
     from datetime import date
     from collector.extract import focus_month

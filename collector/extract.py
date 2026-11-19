@@ -16,6 +16,8 @@ from . import config
 
 TIMETABLE_WORDS = re.compile(r"timetable|time-table|prayer|salah|salat|namaz|jama'?a?h?t|iqam|calendar", re.I)
 FILE_LINK = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
+MONTH_FILE = re.compile(r"(?<![a-z])(january|february|march|april|may|june|july|august|september|october|november|december"
+                        r"|jan|feb|mar|apr|jun|jul|aug|sept?|oct|nov|dec)(?![a-z])", re.I)
 
 PROMPT = """You are reading the published prayer timetable of a UK mosque: {name}, {where}.
 If the page lists several mosques (e.g. a town's mosques side by side, often named by street), use ONLY this mosque's times — match it by name OR by its street/address.
@@ -99,12 +101,15 @@ def page_text(html: bytes, base_url: str) -> tuple[str, list[str]]:
         tr.replace_with(soup.new_string(" | ".join(cells) + "\n"))
     text = re.sub(r"\n\s*\n+", "\n", soup.get_text("\n", strip=True))
     text = join_split_clocks(text)
-    links = []
+    links, month_files = [], []
     for a in soup.find_all("a", href=True):
         href = urljoin(base_url, a["href"])
         label = a.get_text(" ", strip=True) + " " + href
         if FILE_LINK.search(href) and TIMETABLE_WORDS.search(label):
             links.append(href)
+        elif FILE_LINK.search(href) and MONTH_FILE.search(urlparse(href).path.rsplit("/", 1)[-1]):
+            month_files.append(href)    # a file named after a month (uploads/2026/11/November.pdf), no other words
+    links += month_files
     text = text[:60000]
     if addresses:
         text += "\n" + "\n".join(ADDRESS_NOTE + a + "]" for a in addresses)
