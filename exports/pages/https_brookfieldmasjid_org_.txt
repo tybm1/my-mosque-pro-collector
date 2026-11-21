@@ -1,0 +1,45 @@
+URL: https://brookfieldmasjid.org/
+
+===== plain =====
+Create Next App
+Brookfield Masjid
+بِسْمِ ٱللَّٰهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+Prayer timetable
+Today’s Prayer Times
+Loading next prayer…
+Loading…
+
+--- links ---
+/_next/static/chunks/webpack-154a6996cfe0f933.js
+/_next/static/css/11f197e28e149022.css
+/_next/static/media/4cf2300e9c8272f7-s.p.woff2
+/_next/static/media/93f479601ee12b01-s.p.woff2
+/favicon.ico
+
+===== rendered =====
+Create Next App
+Brookfield Masjid
+بِسْمِ ٱللَّٰهِ ٱلرَّحْمَٰنِ ٱلرَّحِيمِ
+Prayer timetable
+Today’s Prayer Times
+NEXT PRAYER
+Asr
+00:54:18
+Counting down to Asr time (15:45)
+FAJR
+5:50
+DHUHR
+13:00
+ASR
+15:45
+MAGHRIB
+17:24
+ISHA
+19:45
+
+--- links ---
+/_next/static/chunks/webpack-154a6996cfe0f933.js
+/_next/static/css/11f197e28e149022.css
+/_next/static/media/4cf2300e9c8272f7-s.p.woff2
+/_next/static/media/93f479601ee12b01-s.p.woff2
+/favicon.ico
