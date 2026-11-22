@@ -399,3 +399,10 @@ def test_poster_reply_cut_off_is_asked_again_with_more_room(monkeypatch):
     j = P.read_poster({"name": "Test"}, "https://x.org/Nov-Timetable.pdf", R(), date(2026, 11, 19), why)
     assert [s["jamaat"] for s in j["slots"]] == ["12:45", "13:10"]
     assert calls[0] >= 2000 and calls[1] > calls[0]
+
+
+def test_fiveprayers_screen_is_followed():
+    # Southport Mosque's homepage links its FivePrayers screen (iqama + Jumu'ah 12:45)
+    from collector.learn import screen_host
+    assert screen_host("http://fiveprayers.org/display/index.php?id=mohammad")
+    assert not screen_host("https://fiveprayersonline.example.com/")

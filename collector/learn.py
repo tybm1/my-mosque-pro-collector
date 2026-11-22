@@ -474,7 +474,7 @@ TIMETABLE_FILE_RX = re.compile(r"\.(pdf|png|jpe?g|webp)(\?|$)", re.I)
 # Timetable services many mosques use instead of putting times on their own site. A link or embedded
 # frame pointing at one of these is the mosque's own live timetable, so it is followed even though
 # it is on another website. (Mawaqit is handled separately.)
-SCREEN_HOSTS = ("masjidbox.com", "mymasjid.uk", "my-masjid.com", "masjidal.com")
+SCREEN_HOSTS = ("masjidbox.com", "mymasjid.uk", "my-masjid.com", "masjidal.com", "fiveprayers.org")
 
 
 def screen_host(url: str) -> bool:
