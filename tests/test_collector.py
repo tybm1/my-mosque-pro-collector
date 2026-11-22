@@ -58,6 +58,13 @@ def test_whole_timetable_rejected_when_mostly_wrong():
     assert not accepted and clean == {}
 
 
+def test_reader_prompt_ignores_tomorrow_notices():
+    # Morden MICC widget: today's row + "tomorrow 19:15" under Isha → the AI made a one-time row for
+    # tomorrow and the page failed the 70% check (1 good day of 2).
+    from collector.extract import PROMPT
+    assert "tomorrow Isha 19:15" in PROMPT and "give no row for that date" in PROMPT
+
+
 def test_old_and_far_future_days_ignored():
     good = {"fajr": "06:15", "dhuhr": "13:30", "asr": "16:00", "maghrib": "18:10", "isha": "19:45"}
     days = {"2026-01-05": good, "2026-10-16": good, "2027-06-01": good}

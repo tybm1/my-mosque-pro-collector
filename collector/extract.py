@@ -36,6 +36,7 @@ Rules:
 - A range like "1–7 Nov: Isha 19:30" applies to every date in the range.
 - A jamaat time printed once for several days (a merged cell or bracket spanning the rows, ditto marks, or a jamaat column that is filled only on the day the time changes while the begin times are printed every day) applies to each of those days, up to the day before the next printed time for that prayer.
 - A separate list that gives times only for named dates (e.g. a small "Fridays" box for another venue) applies to those dates only.
+- On a page that shows one day's times, a short note about a coming change ("tomorrow Isha 19:15", "from Monday Fajr moves to 6:45") is not a timetable for that day: give no row for that date.
 - Maghrib jamaat is often "sunset+5" or "after adhan": if no clock time is printed, use null.
 - Use null for anything not shown. Never guess or calculate a time.
 - "jumuah" only on Fridays, as printed (khutbah or jamaat times), else null.
