@@ -276,6 +276,24 @@ def test_prayer_screen_with_hours_and_minutes_in_separate_boxes():
     assert page_text(b"<html><body><div>Room</div><div>5</div><div>22</div></body></html>", "https://m.org/")[0] == "Room\n5\n22"
 
 
+def test_prayer_screen_with_colon_and_am_pm_in_separate_boxes():
+    """MasjidBox (Nov 2026) prints '7', ':', '00', 'AM' in four boxes — 71 mosques read 'no times' for a day."""
+    from collector.extract import page_text, has_times
+    rows = [("Fajr", 7, "00", "AM"), ("Dhuhr", 1, "00", "PM"), ("Asr", 2, "45", "PM"), ("Maghrib", 4, "04", "PM"),
+            ("Isha", 7, "30", "PM"), ("Jumuah\n1", 12, "00", "PM")]
+    html = ("<html><body><div>The Iqamah of</div><div>Maghrib</div><div>is in</div><div>01</div><div>Hours</div>"
+            + "".join(f"<div>{p}</div><div>{h}</div><div>:</div><div>{m}</div><div>{ap}</div>" for p, h, m, ap in rows)
+            + "</body></html>").encode()
+    text, _ = page_text(html, "https://masjidbox.com/prayer-times/x")
+    assert "Fajr\n7:00 AM" in text and "Asr\n2:45 PM" in text and "Isha\n7:30 PM" in text and has_times(text)
+    assert "01\nHours" in text and "Jumuah\n1\n12:00 PM" in text
+    # 24-hour screens with the colon box, no AM/PM
+    html = "".join(f"<div>{p}</div><div>{h}</div><div>:</div><div>{m}</div>" for p, h, m in
+                   [("Fajr", 5, 35), ("Dhuhr", 11, 48), ("Asr", 13, 39), ("Maghrib", 16, "00"), ("Isha", 17, 54)])
+    text, _ = page_text(f"<html><body>{html}</body></html>".encode(), "https://masjidbox.com/prayer-times/y")
+    assert "Asr\n13:39\nMaghrib\n16:00" in text
+
+
 def test_jumuah_minutes_accepts_am_pm_suffix():
     from collector.profile import clean_jumuah, jumuah_minutes
     assert jumuah_minutes("13:15") == 13 * 60 + 15

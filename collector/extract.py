@@ -51,15 +51,20 @@ def where(m: dict) -> str:
 
 
 _SPLIT_CLOCK = re.compile(r"(?m)^(\d{1,2})\n([0-5]\d)$")
+# Since Nov 2026 MasjidBox also prints the colon and AM/PM in boxes of their own: '7\n:\n00\nAM'.
+_SPLIT_COLON_CLOCK = re.compile(r"(?m)^(\d{1,2})\n:\n([0-5]\d)(?:\n([AaPp][Mm]))?$")
 
 
 def join_split_clocks(text: str) -> str:
     """Prayer screens (e.g. MasjidBox) print hours and minutes in separate boxes, so the text reads
-    'Fajr\n5\n22\nIqamah\n5\n45'. Put them back together as 5:22 / 5:45 — only on pages that clearly
-    do this (several such pairs), so ordinary numbers elsewhere are never turned into times."""
-    if len(_SPLIT_CLOCK.findall(text)) < 5:
-        return text
-    return _SPLIT_CLOCK.sub(r"\1:\2", text)
+    'Fajr\n5\n22\nIqamah\n5\n45' (or '7\n:\n00\nAM'). Put them back together as 5:22 / 7:00 AM — only on
+    pages that clearly do this (several such pairs), so ordinary numbers elsewhere are never turned into times.
+    The colon form goes first, so a 'Jumuah\n1\n12\n:\n00' (first Jumu'ah at 12:00) isn't read as 1:12."""
+    if len(_SPLIT_COLON_CLOCK.findall(text)) >= 5:
+        text = _SPLIT_COLON_CLOCK.sub(lambda m: f"{m[1]}:{m[2]}" + (f" {m[3].upper()}" if m[3] else ""), text)
+    if len(_SPLIT_CLOCK.findall(text)) >= 5:
+        text = _SPLIT_CLOCK.sub(r"\1:\2", text)
+    return text
 
 
 ADDRESS_NOTE = "[Address shown on this site: "
