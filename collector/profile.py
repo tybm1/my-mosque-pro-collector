@@ -456,6 +456,11 @@ def refresh_jumuah(m: dict, reader: Reader, today) -> dict:
     f = {"jumuah_checked_at": now, "jumuah_hash": data_hash}
     if new:
         f["jumuah"] = {**new, "src": j.get("src"), "url": url, "at": now[:10]}
+    elif m.get("jumuah_hash"):
+        # The page changed but this read found no Jumu'ah. Keep the old times for now, but don't save the new
+        # page hash (else the old times would be kept, unchecked, until the page changes again — Swindon
+        # Shah Jalal kept its summer times through November that way) and queue a full website read.
+        f = {"jumuah_checked_at": now, "profile_checked_at": None, "profile_hash": None}
     elif force and (m.get("profile_at") or "") < change.isoformat():
         # After a clock change the page we read before no longer shows the times (they often move to another
         # page or a poster). Queue the whole website for the next profile read so new times are found.

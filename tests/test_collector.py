@@ -424,3 +424,22 @@ def test_fiveprayers_screen_is_followed():
     from collector.learn import screen_host
     assert screen_host("http://fiveprayers.org/display/index.php?id=mohammad")
     assert not screen_host("https://fiveprayersonline.example.com/")
+
+
+def test_weekly_jumuah_refresh_does_not_lock_in_old_times(monkeypatch):
+    """Swindon Shah Jalal: page changed to winter times, the weekly read found nothing, the new page hash was
+    saved anyway, so the summer times stayed unchecked for weeks. Now: hash not saved, full website read queued."""
+    from datetime import date
+    import collector.profile as P
+    page = b"<html><body><p>Jumu'ah times have changed. 1st Jumu'ah 12:30PM &amp; 2nd Jumu'ah 1:30.</p></body></html>"
+    monkeypatch.setattr(P.fetch, "get", lambda url: (page, "text/html", url))
+
+    class R:
+        def ask(self, prompt, max_tokens=400):
+            return {"slots": []}
+    m = {"name": "M", "jumuah_hash": "oldhash", "profile_at": "2026-11-03",
+         "jumuah": {"slots": [{"name": "1st Jumu'ah", "khutbah": "13:30", "jamaat": None}],
+                    "url": "https://x.org", "at": "2026-10-01"}}
+    f = P.refresh_jumuah(m, R(), date(2026, 11, 27))
+    assert "jumuah_hash" not in f and "jumuah" not in f
+    assert f["profile_checked_at"] is None and f["profile_hash"] is None
