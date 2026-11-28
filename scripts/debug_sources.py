@@ -15,6 +15,7 @@ ids = [int(x) for x in open(path).read().split()] if os.path.exists(path) else [
 today = datetime.now(ZoneInfo(config.TIMEZONE)).date()
 store = Store()
 for sid in ids:
+    src = None
     out = [f"source {sid}  today {today}"]
     try:
         src = store._req("GET", f"sources?id=eq.{sid}&select=*,mosques!inner(id,name,lat,lng)")[0]
@@ -37,5 +38,24 @@ for sid in ids:
             out.append(f"accepted={ok} clean={sorted(clean)}\nproblems={problems}")
     except Exception as e:
         out.append(f"failed: {type(e).__name__}: {e}")
+        r = (src or {}).get("recipe") or {}
+        if r.get("kind") == "fields":
+            # Where does the saved selector stop matching? Save the page's HTML around that point.
+            try:
+                from collector.recipes import soup_of
+                html = fetch.render(src["url"]) if r.get("render") else fetch.get(src["url"])[0]
+                soup = soup_of(html)
+                f = next(iter(r["fields"].values()))
+                parts = f["sel"].split(" > ")
+                for n in range(1, len(parts) + 1):
+                    if soup.select_one(" > ".join(parts[:n])) is None:
+                        out.append(f"selector stops matching at part {n}: {parts[n-1]}")
+                        parent = soup.select_one(" > ".join(parts[:n-1])) if n > 1 else soup
+                        kids = [f"{c.name}{('#' + c.get('id')) if c.get('id') else ''}" for c in parent.find_all(recursive=False)] if parent else []
+                        out.append(f"children of the last match: {kids[:40]}")
+                        break
+                open(f"exports/pages/debug_{sid}.html", "wb").write(html[:400000] if isinstance(html, bytes) else html.encode()[:400000])
+            except Exception as e2:
+                out.append(f"html dump failed: {e2}")
     open(f"exports/pages/debug_{sid}.txt", "w").write("\n".join(out))
     print(sid, "debugged")
