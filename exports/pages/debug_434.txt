@@ -1,0 +1,15 @@
+source 434  today 2026-11-28
+{"kind": "fields", "breaks": 10, "fields": {"asr": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(4)", "label": "Asr"}, "fajr": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(1)", "label": "Fajr"}, "isha": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(6)", "label": "Isha"}, "dhuhr": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(3)", "label": "Zuhr"}, "jumuah": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > nav:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > h2:nth-of-type(1)", "label": "Jum"}, "maghrib": {"nth": 0, "sel": "body:nth-of-type(1) > header:nth-of-type(1) > section:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(1) > div:nth-of-type(2) > table:nth-of-type(1) > tbody:nth-of-type(1) > tr:nth-of-type(2) > td:nth-of-type(5)", "label": "Maghrib"}}}
+--- recipe days ---
+{
+"2026-11-28": {
+"asr": "2:45",
+"dhuhr": "1:00",
+"fajr": "7:00",
+"isha": "7:30",
+"jumuah": "Jumuah         1st 1:00  /  2nd 1:30",
+"maghrib": "4:00"
+}
+}
+accepted=True clean=['2026-11-28']
+problems=[]

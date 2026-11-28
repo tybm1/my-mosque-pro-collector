@@ -1,0 +1,14 @@
+source 28  today 2026-11-28
+{"kind": "fields", "breaks": 12, "fields": {"asr": {"nth": 0, "sel": "div[id=\"ptWrapper\"] > div:nth-of-type(3) > div:nth-of-type(3) > div:nth-of-type(4)", "label": "ASR"}, "fajr": {"nth": 0, "sel": "div[id=\"ptWrapper\"] > div:nth-of-type(3) > div:nth-of-type(1) > div:nth-of-type(4)", "label": "FAJR"}, "isha": {"nth": 0, "sel": "div[id=\"ptWrapper\"] > div:nth-of-type(3) > div:nth-of-type(5) > div:nth-of-type(4)", "label": "ISHA"}, "dhuhr": {"nth": 0, "sel": "div[id=\"ptWrapper\"] > div:nth-of-type(3) > div:nth-of-type(2) > div:nth-of-type(4)", "label": "DHUHR"}, "maghrib": {"nth": 0, "sel": "div[id=\"ptWrapper\"] > div:nth-of-type(3) > div:nth-of-type(4) > div:nth-of-type(4)", "label": "MAGHRIB"}}}
+--- recipe days ---
+{
+"2026-11-28": {
+"asr": "2:45",
+"dhuhr": "1:00",
+"fajr": "6:30",
+"isha": "7:00",
+"maghrib": "4:03"
+}
+}
+accepted=True clean=['2026-11-28']
+problems=[]
